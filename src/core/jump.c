@@ -219,6 +219,7 @@ int jump_main(int argc, char *argv[]) {
                     fprintf(stderr, "  %s\n", suggestions[s].alias);
                 }
             }
+            write_temp_cmd("@rem\n");
             free(cfg);
             return J_EXIT_NOT_FOUND;
         }

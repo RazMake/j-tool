@@ -5,7 +5,11 @@
 #include <string.h>
 #include <shlobj.h>
 
-#define DOSKEY_CMD "doskey j=jc.exe $* $T call %TEMP%\\jump_cd.cmd"
+#define DOSKEY_CMD     "doskey j=@call jump_j.cmd $*"
+#define DOSKEY_CMD_OLD "doskey j=jc.exe $* >nul $T call %TEMP%\\jump_cd.cmd"
+
+#define WRAPPER_FILENAME "jump_j.cmd"
+#define WRAPPER_CONTENT  "@for /f \"tokens=*\" %%a in ('jc.exe %*') do @cd /d \"%%a\"\r\n"
 
 #define CMD_PROC_KEY "Software\\Microsoft\\Command Processor"
 #define ENV_KEY      "Environment"
@@ -97,6 +101,33 @@ static void check_jumps_env(void) {
             "  Then re-run jc --install.\n");
 }
 
+/* ---------- Step 2b: wrapper batch file -------------------------------- */
+
+static int write_wrapper_cmd(const char *exe_dir) {
+    char path[MAX_PATH];
+    snprintf(path, sizeof(path), "%s\\%s", exe_dir, WRAPPER_FILENAME);
+
+    HANDLE hFile = CreateFileA(path, GENERIC_WRITE, 0, NULL,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[install] Failed to write wrapper: %s\n", path);
+        return 1;
+    }
+    DWORD written;
+    WriteFile(hFile, WRAPPER_CONTENT,
+             (DWORD)strlen(WRAPPER_CONTENT), &written, NULL);
+    CloseHandle(hFile);
+    fprintf(stderr, "[install] Wrapper script written: %s\n", path);
+    return 0;
+}
+
+static void delete_wrapper_cmd(const char *exe_dir) {
+    char path[MAX_PATH];
+    snprintf(path, sizeof(path), "%s\\%s", exe_dir, WRAPPER_FILENAME);
+    if (DeleteFileA(path))
+        fprintf(stderr, "[uninstall] Wrapper script removed: %s\n", path);
+}
+
 /* ---------- Step 3: DOSKEY AutoRun ------------------------------------- */
 
 static int setup_autorun(void) {
@@ -114,14 +145,36 @@ static int setup_autorun(void) {
     rc = RegQueryValueExA(hkey, "AutoRun", NULL, &type,
                           (BYTE *)existing, &exist_size);
 
-    if (rc == ERROR_SUCCESS && stristr(existing, DOSKEY_CMD)) {
+    /* Remove old $T-based macro if present */
+    const char *old_pos = stristr(existing, DOSKEY_CMD_OLD);
+    if (old_pos) {
+        char cleaned[4096] = {0};
+        size_t before_len = (size_t)(old_pos - existing);
+        if (before_len > 0)
+            memcpy(cleaned, existing, before_len);
+        const char *after = old_pos + strlen(DOSKEY_CMD_OLD);
+        size_t cl = strlen(cleaned);
+        while (cl >= 3 && cleaned[cl-1]==' ' && cleaned[cl-2]=='&' && cleaned[cl-3]==' ') {
+            cl -= 3; cleaned[cl] = '\0';
+        }
+        if (strncmp(after, " & ", 3) == 0) after += 3;
+        if (*after) {
+            if (cleaned[0]) strcat_s(cleaned, sizeof(cleaned), " & ");
+            strcat_s(cleaned, sizeof(cleaned), after);
+        }
+        strcpy_s(existing, sizeof(existing), cleaned);
+        exist_size = (DWORD)strlen(existing);
+        fprintf(stderr, "[install] Removed old $T-based DOSKEY macro.\n");
+    }
+
+    if (stristr(existing, DOSKEY_CMD)) {
         fprintf(stderr, "[install] DOSKEY macro already in AutoRun, skipping.\n");
         RegCloseKey(hkey);
         return 0;
     }
 
     char newval[4096];
-    if (rc == ERROR_SUCCESS && existing[0] != '\0') {
+    if (existing[0] != '\0') {
         snprintf(newval, sizeof(newval), "%s & %s", existing, DOSKEY_CMD);
     } else {
         snprintf(newval, sizeof(newval), "%s", DOSKEY_CMD);
@@ -381,8 +434,13 @@ static int remove_autorun(void) {
         return 0;
     }
 
-    /* Find and remove our doskey command */
+    /* Find and remove our doskey command (try new format, then old) */
     const char *pos = stristr(existing, DOSKEY_CMD);
+    size_t cmd_len = strlen(DOSKEY_CMD);
+    if (!pos) {
+        pos = stristr(existing, DOSKEY_CMD_OLD);
+        cmd_len = strlen(DOSKEY_CMD_OLD);
+    }
     if (!pos) {
         RegCloseKey(hkey);
         return 0;
@@ -396,7 +454,7 @@ static int remove_autorun(void) {
     }
 
     /* Skip our command */
-    const char *after = pos + strlen(DOSKEY_CMD);
+    const char *after = pos + cmd_len;
 
     /* Clean up separator: " & " before or after */
     /* Trim trailing " & " from before part */
@@ -504,6 +562,15 @@ int jump_install(const char *tc_panel) {
         fprintf(stderr, "[install] Total Commander not found (TC integration skipped).\n");
     }
 
+    /* Step 2b: Write wrapper batch file next to jc.exe */
+    char exe_dir[MAX_PATH];
+    if (get_exe_dir(exe_dir, sizeof(exe_dir)) == 0) {
+        errors += write_wrapper_cmd(exe_dir);
+    } else {
+        fprintf(stderr, "[install] Failed to determine exe directory.\n");
+        errors++;
+    }
+
     /* Step 3: DOSKEY AutoRun */
     errors += setup_autorun();
 
@@ -511,12 +578,8 @@ int jump_install(const char *tc_panel) {
     errors += setup_ps_profile(tc_found ? tc_path : NULL, panel);
 
     /* Step 5: Add to PATH */
-    char exe_dir[MAX_PATH];
-    if (get_exe_dir(exe_dir, sizeof(exe_dir)) == 0) {
+    if (exe_dir[0]) {
         errors += add_to_path(exe_dir);
-    } else {
-        fprintf(stderr, "[install] Failed to determine exe directory.\n");
-        errors++;
     }
 
     /* Broadcast environment change */
@@ -548,8 +611,13 @@ int jump_uninstall(void) {
         }
     }
 
-    /* Step 3: Remove from PATH */
+    /* Step 2b: Remove wrapper batch file */
     char exe_dir[MAX_PATH];
+    if (get_exe_dir(exe_dir, sizeof(exe_dir)) == 0) {
+        delete_wrapper_cmd(exe_dir);
+    }
+
+    /* Step 3: Remove from PATH */
     if (get_exe_dir(exe_dir, sizeof(exe_dir)) == 0) {
         errors += remove_from_path(exe_dir);
     }
