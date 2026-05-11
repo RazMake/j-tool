@@ -1,0 +1,27 @@
+# Active Context
+
+## Current State
+- Project is at v1.0 (initial release)
+- All core features implemented and working
+- Test suite comprehensive (~53 unit tests across 6 test modules)
+- Coverage gate set at 85%
+
+## Recent Changes
+- Memory bank created (2026-05-11) — comprehensive project documentation
+
+## Current Focus
+- No active development in progress
+- Baseline established, ready for new work
+
+## Known Limitations
+| Limitation | Notes |
+|-----------|-------|
+| Max 256 shortcuts, 64 constants | Hard-coded limits in types.h |
+| Single-pass template expansion | No nested `{{...}}` support |
+| No circular include detection | Include chains not validated |
+| OSD timeout hard-coded at 1.5s | Not configurable |
+| Binary cache format v1 only | No migration strategy for format changes |
+| Windows-only | No Unix/macOS support |
+
+## Open Questions
+- None currently documented
