@@ -25,6 +25,23 @@ static int get_exe_dir(char *buf, size_t buf_size) {
     return 0;
 }
 
+/*
+ * Build a PowerShell profile path using the real Documents folder
+ * (respects OneDrive/folder redirection).
+ *   subfolder: "PowerShell" or "WindowsPowerShell"
+ */
+static int get_ps_profile_path(const char *subfolder,
+                               char *buf, size_t buf_size) {
+    char docs[MAX_PATH];
+    if (FAILED(SHGetFolderPathA(NULL, CSIDL_PERSONAL, NULL, 0, docs)))
+        return -1;
+    int n = snprintf(buf, buf_size, "%s\\%s\\Microsoft.PowerShell_profile.ps1",
+                     docs, subfolder);
+    if (n < 0 || (size_t)n >= buf_size)
+        return -1;
+    return 0;
+}
+
 /* Case-insensitive substring search. */
 static const char *stristr(const char *haystack, const char *needle) {
     if (!haystack || !needle) return NULL;
@@ -123,42 +140,7 @@ static int setup_autorun(void) {
 
 /* ---------- Step 4: PowerShell profile --------------------------------- */
 
-static int setup_ps_profile(const char *tc_path, const char *panel) {
-    char profile_path[MAX_PATH];
-    if (ExpandEnvironmentStringsA(
-            "%USERPROFILE%\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
-            profile_path, MAX_PATH) == 0) {
-        fprintf(stderr, "[install] Failed to expand profile path.\n");
-        return 1;
-    }
-
-    /* Build the PS block */
-    char block[2048];
-    if (tc_path && tc_path[0]) {
-        snprintf(block, sizeof(block),
-                 "%s\n"
-                 "function j {\n"
-                 "    $path = & jc.exe @args\n"
-                 "    if ($path) {\n"
-                 "        & \"%s\" /O /S /%s=\"$path\"\n"
-                 "        Set-Location $path\n"
-                 "    }\n"
-                 "}\n"
-                 "%s\n",
-                 PS_MARKER_BEGIN, tc_path, panel, PS_MARKER_END);
-    } else {
-        snprintf(block, sizeof(block),
-                 "%s\n"
-                 "function j {\n"
-                 "    $path = & jc.exe @args\n"
-                 "    if ($path) {\n"
-                 "        Set-Location $path\n"
-                 "    }\n"
-                 "}\n"
-                 "%s\n",
-                 PS_MARKER_BEGIN, PS_MARKER_END);
-    }
-
+static int write_ps_profile(const char *profile_path, const char *block) {
     /* Read existing profile if any */
     char *content = NULL;
     DWORD content_len = 0;
@@ -241,6 +223,48 @@ static int setup_ps_profile(const char *tc_path, const char *panel) {
 
     fprintf(stderr, "[install] PowerShell profile updated: %s\n", profile_path);
     return 0;
+}
+
+static int setup_ps_profile(const char *tc_path, const char *panel) {
+    /* Build the PS block — simple Set-Location wrapper.
+     * TC navigation is handled via the temp cmd file for CMD users;
+     * PowerShell users get a clean directory change without bringing
+     * Total Commander to the foreground. */
+    char block[2048];
+    (void)tc_path;
+    (void)panel;
+    snprintf(block, sizeof(block),
+             "%s\n"
+             "function j {\n"
+             "    $path = & jc.exe @args\n"
+             "    if ($path) {\n"
+             "        Set-Location $path\n"
+             "    }\n"
+             "}\n"
+             "%s\n",
+             PS_MARKER_BEGIN, PS_MARKER_END);
+
+    int errors = 0;
+
+    /* Windows PowerShell 5.x profile */
+    {
+        char profile_path[MAX_PATH];
+        if (get_ps_profile_path("WindowsPowerShell", profile_path,
+                                sizeof(profile_path)) == 0) {
+            errors += write_ps_profile(profile_path, block);
+        }
+    }
+
+    /* PowerShell 7+ (pwsh) profile */
+    {
+        char profile_path[MAX_PATH];
+        if (get_ps_profile_path("PowerShell", profile_path,
+                                sizeof(profile_path)) == 0) {
+            errors += write_ps_profile(profile_path, block);
+        }
+    }
+
+    return errors ? 1 : 0;
 }
 
 /* ---------- Step 5: PATH ----------------------------------------------- */
@@ -405,14 +429,7 @@ static int remove_autorun(void) {
     return 0;
 }
 
-static int remove_ps_profile(void) {
-    char profile_path[MAX_PATH];
-    if (ExpandEnvironmentStringsA(
-            "%USERPROFILE%\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
-            profile_path, MAX_PATH) == 0) {
-        return 1;
-    }
-
+static int remove_ps_profile_at(const char *profile_path) {
     HANDLE hf = CreateFileA(profile_path, GENERIC_READ, FILE_SHARE_READ,
                             NULL, OPEN_EXISTING, 0, NULL);
     if (hf == INVALID_HANDLE_VALUE) return 0; /* file doesn't exist */
@@ -518,8 +535,18 @@ int jump_uninstall(void) {
     /* Step 1: Remove DOSKEY from AutoRun */
     errors += remove_autorun();
 
-    /* Step 2: Remove PS profile block */
-    errors += remove_ps_profile();
+    /* Step 2: Remove PS profile block (both PS 5 and pwsh 7+) */
+    {
+        char profile_path[MAX_PATH];
+        if (get_ps_profile_path("WindowsPowerShell", profile_path,
+                                sizeof(profile_path)) == 0) {
+            errors += remove_ps_profile_at(profile_path);
+        }
+        if (get_ps_profile_path("PowerShell", profile_path,
+                                sizeof(profile_path)) == 0) {
+            errors += remove_ps_profile_at(profile_path);
+        }
+    }
 
     /* Step 3: Remove from PATH */
     char exe_dir[MAX_PATH];

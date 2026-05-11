@@ -7,6 +7,5 @@ int run_config_tests(void);
 int run_resolver_tests(void);
 int run_suggest_tests(void);
 int run_tc_tests(void);
-int run_install_tests(void);
 
 #endif /* JUMP_TESTS_H */

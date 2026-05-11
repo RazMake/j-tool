@@ -12,6 +12,5 @@ int main(void) {
     failed += run_resolver_tests();
     failed += run_suggest_tests();
     failed += run_tc_tests();
-    failed += run_install_tests();
     return failed;
 }

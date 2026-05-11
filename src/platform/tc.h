@@ -38,4 +38,14 @@ int tc_build_cd_command(const char *tc_path, const char *panel,
  */
 int tc_navigate(const char *directory);
 
+/*
+ * Check whether Total Commander is an ancestor process.
+ *
+ * Walks up the process tree (up to 10 levels) looking for
+ * TOTALCMD64.EXE or TOTALCMD.EXE.
+ *
+ * Returns 1 if TC is an ancestor, 0 otherwise.
+ */
+int tc_is_ancestor(void);
+
 #endif /* TC_H */

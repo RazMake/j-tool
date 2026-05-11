@@ -1,5 +1,6 @@
 #include "tc.h"
 #include <windows.h>
+#include <tlhelp32.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -86,5 +87,56 @@ int tc_navigate(const char *directory) {
 
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+    return 0;
+}
+
+static DWORD get_parent_pid(DWORD pid) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32 pe;
+
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+
+    pe.dwSize = sizeof(pe);
+    if (Process32First(snap, &pe)) {
+        do {
+            if (pe.th32ProcessID == pid) {
+                CloseHandle(snap);
+                return pe.th32ParentProcessID;
+            }
+        } while (Process32Next(snap, &pe));
+    }
+    CloseHandle(snap);
+    return 0;
+}
+
+int tc_is_ancestor(void) {
+    DWORD pid = GetCurrentProcessId();
+    int i;
+
+    for (i = 0; i < 10; i++) {
+        char name[MAX_PATH];
+        DWORD name_size = MAX_PATH;
+        HANDLE proc;
+        char *base;
+
+        pid = get_parent_pid(pid);
+        if (pid == 0) return 0;
+
+        proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!proc) return 0;
+
+        if (!QueryFullProcessImageNameA(proc, 0, name, &name_size)) {
+            CloseHandle(proc);
+            return 0;
+        }
+        CloseHandle(proc);
+
+        base = strrchr(name, '\\');
+        base = base ? base + 1 : name;
+        if (_stricmp(base, "TOTALCMD64.EXE") == 0 ||
+            _stricmp(base, "TOTALCMD.EXE") == 0) {
+            return 1;
+        }
+    }
     return 0;
 }

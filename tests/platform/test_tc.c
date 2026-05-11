@@ -64,6 +64,12 @@ static void test_tc_find_path_small_buffer(void **state) {
     assert_int_equal(-1, rc);
 }
 
+static void test_tc_is_ancestor_not_tc(void **state) {
+    (void)state;
+    /* In the test environment we are not launched from TC */
+    assert_int_equal(0, tc_is_ancestor());
+}
+
 int run_tc_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_tc_build_cd_command_left),
@@ -72,6 +78,7 @@ int run_tc_tests(void) {
         cmocka_unit_test(test_tc_build_cd_command_small_buffer),
         cmocka_unit_test(test_tc_find_path_no_crash),
         cmocka_unit_test(test_tc_find_path_small_buffer),
+        cmocka_unit_test(test_tc_is_ancestor_not_tc),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

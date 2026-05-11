@@ -101,8 +101,9 @@ static void write_temp_cmd(const char *content) {
 static void perform_action(const ResolveResult *result) {
     switch (result->type) {
     case SHORTCUT_CD: {
-        /* Navigate TC panel if TC is running */
-        tc_navigate(result->expanded_target);
+        /* Navigate TC panel only if launched from TC */
+        if (tc_is_ancestor())
+            tc_navigate(result->expanded_target);
         /* Write path to stdout for PowerShell wrapper */
         HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hStdout && hStdout != INVALID_HANDLE_VALUE) {
