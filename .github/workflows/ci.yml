@@ -1,0 +1,53 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Debug
+
+      - name: Test
+        run: ctest --test-dir build --build-config Debug --output-on-failure
+
+      - name: Install OpenCppCoverage
+        run: choco install opencppcoverage -y
+
+      - name: Coverage
+        run: |
+          $env:PATH = "C:\Program Files\OpenCppCoverage;" + $env:PATH
+          OpenCppCoverage.exe `
+            --sources src\ `
+            --excluded_sources osd.c `
+            --export_type cobertura:coverage.xml `
+            -- build\Debug\j_tests.exe
+
+      - name: Check Coverage Gate (85%)
+        shell: python
+        run: |
+          import xml.etree.ElementTree as ET
+          import sys
+          tree = ET.parse('coverage.xml')
+          root = tree.getroot()
+          rate = float(root.get('line-rate', '0'))
+          pct = rate * 100
+          print(f'Line coverage: {pct:.1f}%')
+          if rate < 0.85:
+              print(f'FAIL: Coverage {pct:.1f}% is below 85% threshold')
+              sys.exit(1)
+          else:
+              print(f'PASS: Coverage {pct:.1f}% meets 85% threshold')
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
