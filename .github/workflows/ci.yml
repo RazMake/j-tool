@@ -60,6 +60,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: j-exe
+          path: release
+
+      - name: List Release Files
+        run: find release -type f
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -67,7 +71,7 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: Release v1.0.${{ github.run_number }}
           files: |
-            j.exe
-            jc.exe
-            CHANGELOG.md
+            release/build-release/j.exe
+            release/build-release/jc.exe
+            release/CHANGELOG.md
           generate_release_notes: true
