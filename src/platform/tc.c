@@ -57,3 +57,34 @@ int tc_build_cd_command(const char *tc_path, const char *panel,
         return -1;
     return 0;
 }
+
+int tc_navigate(const char *directory) {
+    char tc_path[MAX_PATH];
+    char cmd_buf[MAX_PATH + MAX_PATH + 64];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+
+    /* Only act if TC is already running */
+    if (!FindWindowA("TTOTAL_CMD", NULL))
+        return -1;
+
+    if (tc_find_path(tc_path, sizeof(tc_path)) != 0)
+        return -1;
+
+    /* Navigate the source (active) panel */
+    if (tc_build_cd_command(tc_path, "L", directory,
+                            cmd_buf, sizeof(cmd_buf)) != 0)
+        return -1;
+
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+
+    if (!CreateProcessA(NULL, cmd_buf, NULL, NULL, FALSE,
+                        0, NULL, NULL, &si, &pi))
+        return -1;
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return 0;
+}
