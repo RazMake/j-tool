@@ -131,6 +131,147 @@ static void test_cache_load_nonexistent(void **state) {
     free(cfg);
 }
 
+static void test_cache_save_null_config(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_null.cache");
+    CacheSourceFile sf = {0};
+    assert_int_equal(-1, cache_save(tmp, NULL, &sf, 1));
+    DeleteFileW(tmp);
+}
+
+static void test_cache_save_bad_source_count(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_badsc.cache");
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    CacheSourceFile sf = {0};
+    assert_int_equal(-1, cache_save(tmp, cfg, &sf, -1));
+    assert_int_equal(-1, cache_save(tmp, cfg, &sf, MAX_SOURCE_FILES + 1));
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
+static void test_cache_save_invalid_path(void **state) {
+    (void)state;
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    CacheSourceFile sf = {0};
+    assert_int_equal(-1, cache_save(L"Z:\\no\\such\\dir\\file.cache", cfg, &sf, 0));
+    free(cfg);
+}
+
+static void test_cache_load_bad_counts(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_badcounts.cache");
+
+    HANDLE hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+    CacheHeader hdr = {0};
+    hdr.magic = CACHE_MAGIC;
+    hdr.version = CACHE_VERSION;
+    hdr.shortcut_count = MAX_SHORTCUTS + 1;
+    DWORD written;
+    WriteFile(hFile, &hdr, sizeof(hdr), &written, NULL);
+    CloseHandle(hFile);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(-1, cache_load(tmp, cfg));
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
+static void test_cache_is_fresh_bad_magic(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_badmagic_f.cache");
+
+    HANDLE hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+    CacheHeader hdr = {0};
+    hdr.magic = 0xDEADBEEF;
+    hdr.version = CACHE_VERSION;
+    DWORD written;
+    WriteFile(hFile, &hdr, sizeof(hdr), &written, NULL);
+    CloseHandle(hFile);
+
+    assert_int_equal(0, cache_is_fresh(tmp));
+    DeleteFileW(tmp);
+}
+
+static void test_cache_is_fresh_truncated(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    char buf[] = "tiny";
+    DWORD written;
+    HANDLE hFile;
+    make_temp_path(tmp, MAX_PATH, L"jtest_trunc_f.cache");
+
+    hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+    WriteFile(hFile, buf, sizeof(buf), &written, NULL);
+    CloseHandle(hFile);
+
+    assert_int_equal(0, cache_is_fresh(tmp));
+    DeleteFileW(tmp);
+}
+
+static void test_cache_is_fresh_missing_source(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_missrc_f.cache");
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    CacheSourceFile sf = {0};
+    wcscpy_s(sf.path, MAX_PATH, L"C:\\nonexistent_jtest_src_99.txt");
+
+    assert_int_equal(0, cache_save(tmp, cfg, &sf, 1));
+    assert_int_equal(0, cache_is_fresh(tmp));
+
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
+static void test_cache_is_fresh_stale(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_stale_f.cache");
+    wchar_t src_path[MAX_PATH];
+    make_temp_path(src_path, MAX_PATH, L"jtest_stale_src.txt");
+
+    /* Create source file */
+    HANDLE hSrc = CreateFileW(src_path, GENERIC_WRITE, 0, NULL,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hSrc != INVALID_HANDLE_VALUE);
+    CloseHandle(hSrc);
+
+    /* Get its real mtime */
+    WIN32_FILE_ATTRIBUTE_DATA fdata;
+    assert_true(GetFileAttributesExW(src_path, GetFileExInfoStandard, &fdata));
+
+    /* Store in cache with a different mtime */
+    CacheSourceFile sf = {0};
+    wcscpy_s(sf.path, MAX_PATH, src_path);
+    sf.mtime = fdata.ftLastWriteTime;
+    sf.mtime.dwHighDateTime += 1; /* intentionally wrong */
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, cache_save(tmp, cfg, &sf, 1));
+    assert_int_equal(0, cache_is_fresh(tmp));
+
+    free(cfg);
+    DeleteFileW(tmp);
+    DeleteFileW(src_path);
+}
+
 int run_cache_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_cache_get_default_path),
@@ -139,6 +280,14 @@ int run_cache_tests(void) {
         cmocka_unit_test(test_cache_is_fresh_after_save),
         cmocka_unit_test(test_cache_load_corrupted_magic),
         cmocka_unit_test(test_cache_load_nonexistent),
+        cmocka_unit_test(test_cache_save_null_config),
+        cmocka_unit_test(test_cache_save_bad_source_count),
+        cmocka_unit_test(test_cache_save_invalid_path),
+        cmocka_unit_test(test_cache_load_bad_counts),
+        cmocka_unit_test(test_cache_is_fresh_bad_magic),
+        cmocka_unit_test(test_cache_is_fresh_truncated),
+        cmocka_unit_test(test_cache_is_fresh_missing_source),
+        cmocka_unit_test(test_cache_is_fresh_stale),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

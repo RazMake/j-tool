@@ -81,15 +81,35 @@ Each section (other than `[Constants]` and `[Include]`) defines a shortcut:
 `{{CONSTANT}}` references are expanded from the merged `[Constants]` sections.
 `{{ENV:VARNAME}}` references are expanded from environment variables.
 
+## Developer Setup
+
+### New machine (automated)
+
+Run `setup_dev.ps1` from an **elevated (Administrator)** PowerShell prompt. It will:
+
+1. Install prerequisites via [Chocolatey](https://chocolatey.org/) — Git, CMake, OpenCppCoverage, and Visual Studio Build Tools 2022 (skips any already installed).
+2. Auto-detect the MSVC toolset and Windows SDK versions and generate `build_env.ps1`.
+3. Configure the CMake project.
+4. Build in Debug mode.
+5. Run all tests.
+6. Run the code coverage gate (85% on testable code).
+
+### Prerequisites (manual)
+
+If you prefer to set things up yourself, you need:
+
+- **Visual Studio 2022** (or Build Tools) with the C++ desktop workload
+- **CMake** ≥ 3.20
+- **OpenCppCoverage** (`choco install opencppcoverage -y`) — for local coverage checks
+- **Git**
+
 ## Building
 
-Requires CMake ≥ 3.20 and an MSVC toolchain (C11).
-
-Use `build_env.bat` to set up the MSVC environment (it calls `vcvars64.bat`), then configure with the NMake generator:
+Use `build_env.ps1` to set up the MSVC environment, then configure and build (by running both of the following commands in this order):
 
 ```
-build_env.bat cmake -G "NMake Makefiles" -S . -B build
-build_env.bat cmake --build build
+.\build_env.ps1 cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+.\build_env.ps1 cmake --build build
 ```
 
 The test framework ([cmocka](https://cmocka.org/)) is fetched automatically during configuration.
@@ -97,10 +117,28 @@ The test framework ([cmocka](https://cmocka.org/)) is fetched automatically duri
 ### Running tests
 
 ```
-build_env.bat cmake --build build --target j_tests
-cd build
-build_env.bat ctest --output-on-failure
+.\build_env.ps1 ctest --test-dir build --output-on-failure
 ```
+
+### Code coverage
+
+Run `check_coverage.ps1` to measure line coverage and enforce the 85% gate:
+
+```
+.\check_coverage.ps1
+```
+
+The following files are excluded from coverage measurement:
+
+| File | Reason |
+|------|--------|
+| `osd.c` | Win32 GUI code (creates a layered window, paints with GDI, runs a message loop) — cannot be exercised in a headless test harness. |
+| `main.c` | Thin entry point (`main` → `jump_main`); no logic to test. |
+| `main_win.c` | Thin entry point (`WinMain` → `jump_main`); no logic to test. |
+| `jump.c` | Top-level dispatch: spawns processes, calls `ShellExecute`, writes temp files, and interacts with the console handle — all side-effects that require a live Windows session. |
+| `install.c` | Modifies the registry, `$PROFILE`, `PATH`, and broadcasts `WM_SETTINGCHANGE` — destructive system-level side-effects unsuitable for unit tests. |
+
+The same exclusions are applied in the CI pipeline.
 
 ## Installation
 

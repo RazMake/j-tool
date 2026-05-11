@@ -124,6 +124,34 @@ static void test_suggest_fewer_than_max(void **state) {
     free(cfg);
 }
 
+/* 11. suggest_aliases replaces worst when array is full */
+static void test_suggest_replaces_worst(void **state) {
+    (void)state;
+    /* 4 distant aliases, then 1 close alias → must replace a distant one */
+    const char *aliases[] = {"aaaa", "bbbb", "cccc", "dddd", "hom"};
+    JumpConfig *cfg = make_config(aliases, 5);
+    Suggestion suggestions[MAX_SUGGESTIONS];
+
+    int n = suggest_aliases(cfg, "home", suggestions, MAX_SUGGESTIONS);
+    assert_int_equal(MAX_SUGGESTIONS, n);
+
+    /* "hom" (distance 1) must appear in results */
+    int found = 0;
+    for (int i = 0; i < n; i++) {
+        if (strcmp(suggestions[i].alias, "hom") == 0) {
+            found = 1;
+            assert_int_equal(1, suggestions[i].distance);
+        }
+    }
+    assert_true(found);
+
+    /* Results remain sorted ascending by distance */
+    for (int i = 1; i < n; i++)
+        assert_true(suggestions[i].distance >= suggestions[i - 1].distance);
+
+    free(cfg);
+}
+
 int run_suggest_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_levenshtein_identical),
@@ -136,6 +164,7 @@ int run_suggest_tests(void) {
         cmocka_unit_test(test_suggest_top3_sorted),
         cmocka_unit_test(test_suggest_skips_exact),
         cmocka_unit_test(test_suggest_fewer_than_max),
+        cmocka_unit_test(test_suggest_replaces_worst),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
