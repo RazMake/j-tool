@@ -51,3 +51,42 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+      - name: Build Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cmake -B build-release -G "Visual Studio 17 2022"
+          cmake --build build-release --config Release
+
+      - name: Upload Release Artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: j-exe
+          path: |
+            build-release\Release\j.exe
+            build-release\Release\jc.exe
+            CHANGELOG.md
+
+  release:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: j-exe
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Release v1.0.${{ github.run_number }}
+          files: |
+            j.exe
+            jc.exe
+            CHANGELOG.md
+          generate_release_notes: true
