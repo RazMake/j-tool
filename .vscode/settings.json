@@ -1,6 +1,24 @@
 {
     "chat.tools.terminal.autoApprove": {
         ".\\build.ps1": true,
-        ".\\test.ps1": true
+        ".\\test.ps1": true,
+        "/^cd \"c:\\\\Data\\\\My Code\\\\Jump\"; \\.\\\\configure\\.ps1; \\.\\\\build\\.ps1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "Test-Path": true,
+        "/^& \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Enterprise\\\\Common7\\\\Tools\\\\VsDevCmd\\.bat\" -arch=amd64 2>&1 \\| Select-Object -Last 5; \\$env:INCLUDE -split \";\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$vsDevCmd = \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Enterprise\\\\Common7\\\\Tools\\\\Launch-VsDevShell\\.ps1\"; & \\$vsDevCmd -Arch amd64; cmake --build \"C:\\\\Data\\\\My Code\\\\Jump\\\\build\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^\\$vsDevCmd = \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Enterprise\\\\Common7\\\\Tools\\\\Launch-VsDevShell\\.ps1\"; & \\$vsDevCmd -Arch amd64; \\$env:INCLUDE -split \";\" \\| ForEach-Object \\{ \"\\$_ => \\$\\(Test-Path \\$_\\)\" \\}$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        ".\\build_env.ps1": true
     }
 }

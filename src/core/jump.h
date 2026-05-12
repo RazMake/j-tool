@@ -21,4 +21,8 @@ int jump_main(int argc, char *argv[]);
  * meaning it needs a cmd.exe /c wrapper to run via CreateProcessA. */
 int exec_needs_cmd_wrapper(const char *cmd_line);
 
+/* Returns 1 if the EXEC command line targets a .ps1 script,
+ * meaning it needs a PowerShell wrapper (pwsh or powershell) to run. */
+int exec_needs_ps_wrapper(const char *cmd_line);
+
 #endif /* JUMP_MAIN_H */

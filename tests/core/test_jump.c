@@ -45,6 +45,30 @@ static void test_short_token_not_wrapped(void **state) {
     assert_int_equal(0, exec_needs_cmd_wrapper(""));
 }
 
+/* --- exec_needs_ps_wrapper tests --- */
+
+static void test_ps1_extension_unquoted(void **state) {
+    (void)state;
+    assert_int_equal(1, exec_needs_ps_wrapper("C:\\tools\\build.ps1"));
+    assert_int_equal(1, exec_needs_ps_wrapper("build.ps1 arg1 arg2"));
+    assert_int_equal(1, exec_needs_ps_wrapper("C:\\tools\\build.PS1"));
+}
+
+static void test_ps1_extension_quoted(void **state) {
+    (void)state;
+    assert_int_equal(1, exec_needs_ps_wrapper("\"C:\\Program Files\\build.ps1\" arg1"));
+    assert_int_equal(1, exec_needs_ps_wrapper("\"C:\\tools\\run.ps1\""));
+}
+
+static void test_ps1_not_matched_for_cmd(void **state) {
+    (void)state;
+    assert_int_equal(0, exec_needs_ps_wrapper("C:\\tools\\app.exe"));
+    assert_int_equal(0, exec_needs_ps_wrapper("build.cmd"));
+    assert_int_equal(0, exec_needs_ps_wrapper("run.bat"));
+    assert_int_equal(0, exec_needs_ps_wrapper("app"));
+    assert_int_equal(0, exec_needs_ps_wrapper(""));
+}
+
 int run_jump_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_cmd_extension_unquoted),
@@ -53,6 +77,9 @@ int run_jump_tests(void) {
         cmocka_unit_test(test_exe_not_wrapped),
         cmocka_unit_test(test_no_extension_not_wrapped),
         cmocka_unit_test(test_short_token_not_wrapped),
+        cmocka_unit_test(test_ps1_extension_unquoted),
+        cmocka_unit_test(test_ps1_extension_quoted),
+        cmocka_unit_test(test_ps1_not_matched_for_cmd),
     };
     return cmocka_run_group_tests_name("jump", tests, NULL, NULL);
 }

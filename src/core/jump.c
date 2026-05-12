@@ -140,6 +140,38 @@ int exec_needs_cmd_wrapper(const char *cmd_line) {
     return (_stricmp(ext, ".cmd") == 0 || _stricmp(ext, ".bat") == 0);
 }
 
+/* Check if an EXEC command line targets a .ps1 script.
+ * Extracts the first token (respecting double-quotes) and checks extension. */
+int exec_needs_ps_wrapper(const char *cmd_line) {
+    char first_token[MAX_PATH];
+    const char *p = cmd_line;
+    size_t len;
+
+    /* Skip leading whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    if (*p == '"') {
+        /* Quoted path: extract contents between quotes */
+        p++;
+        const char *close = strchr(p, '"');
+        if (!close) return 0;
+        len = (size_t)(close - p);
+    } else {
+        /* Unquoted: first token ends at space or end of string */
+        const char *end = p;
+        while (*end && *end != ' ' && *end != '\t') end++;
+        len = (size_t)(end - p);
+    }
+
+    if (len >= MAX_PATH || len < 4) return 0;
+    memcpy(first_token, p, len);
+    first_token[len] = '\0';
+
+    /* Check for .ps1 extension (case-insensitive) */
+    const char *ext = first_token + len - 4;
+    return (_stricmp(ext, ".ps1") == 0);
+}
+
 static void perform_action(const ResolveResult *result) {
     switch (result->type) {
     case SHORTCUT_CD: {
@@ -180,6 +212,10 @@ static void perform_action(const ResolveResult *result) {
         if (exec_needs_cmd_wrapper(target)) {
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "cmd.exe /c %s", target);
+        } else if (exec_needs_ps_wrapper(target)) {
+            /* .ps1 scripts need PowerShell; try pwsh first, fall back to powershell */
+            sprintf_s(cmd_copy, sizeof(cmd_copy),
+                      "pwsh -NoProfile -ExecutionPolicy Bypass -File %s", target);
         } else {
             strcpy_s(cmd_copy, sizeof(cmd_copy), target);
         }
@@ -192,6 +228,15 @@ static void perform_action(const ResolveResult *result) {
                            0, NULL, NULL, &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
+        } else if (exec_needs_ps_wrapper(target)) {
+            /* pwsh not found, fall back to powershell.exe */
+            sprintf_s(cmd_copy, sizeof(cmd_copy),
+                      "powershell -NoProfile -ExecutionPolicy Bypass -File %s", target);
+            if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
+                               0, NULL, NULL, &si, &pi)) {
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
         }
         write_temp_cmd("@rem\n");
         break;
