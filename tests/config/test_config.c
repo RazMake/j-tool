@@ -321,6 +321,41 @@ static void test_config_load_cache_hit(void **state) {
     free(cfg2);
 }
 
+static void test_config_load_multi_word_alias(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_multiword.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[My Project]\n"
+        "Label=My Project Dir\n"
+        "Jumps=my project, mp\n"
+        "Path=C:\\MyProject\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_int_equal(2, cfg->shortcuts[0].alias_count);
+    assert_string_equal("my project", cfg->shortcuts[0].aliases[0]);
+    assert_string_equal("mp", cfg->shortcuts[0].aliases[1]);
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
 int run_config_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_config_expand_passthrough),
@@ -349,6 +384,8 @@ int run_config_tests(void) {
         cmocka_unit_test_setup_teardown(test_config_load_utf16le_bom,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_cache_hit,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_multi_word_alias,
             config_load_setup, config_load_teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

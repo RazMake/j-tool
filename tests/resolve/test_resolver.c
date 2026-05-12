@@ -144,6 +144,63 @@ static void test_empty_config_not_found(void **state) {
     free(cfg);
 }
 
+/* 9. Multi-word alias exact match */
+static void test_multi_word_alias_match(void **state) {
+    (void)state;
+    JumpConfig *cfg = make_config();
+    add_shortcut(cfg, SHORTCUT_CD, "My Project", "C:\\MyProject", 2, "my project", "mp");
+
+    ResolveResult result;
+    int rc = resolve_alias(cfg, "my project", 0, NULL, &result);
+    assert_int_equal(0, rc);
+    assert_int_equal(SHORTCUT_CD, result.type);
+    assert_string_equal("My Project", result.label);
+    assert_string_equal("C:\\MyProject", result.expanded_target);
+    free(cfg);
+}
+
+/* 10. Multi-word alias case-insensitive */
+static void test_multi_word_alias_case_insensitive(void **state) {
+    (void)state;
+    JumpConfig *cfg = make_config();
+    add_shortcut(cfg, SHORTCUT_CD, "My Project", "C:\\MyProject", 1, "my project");
+
+    ResolveResult result;
+    int rc = resolve_alias(cfg, "My Project", 0, NULL, &result);
+    assert_int_equal(0, rc);
+    assert_string_equal("C:\\MyProject", result.expanded_target);
+    free(cfg);
+}
+
+/* 11. Multi-word alias with params (EXEC) */
+static void test_multi_word_alias_exec_with_params(void **state) {
+    (void)state;
+    JumpConfig *cfg = make_config();
+    add_shortcut(cfg, SHORTCUT_EXEC, "Visual Studio", "devenv.exe {1}", 1, "visual studio");
+
+    const char *params[] = {"solution.sln"};
+    ResolveResult result;
+    int rc = resolve_alias(cfg, "visual studio", 1, params, &result);
+    assert_int_equal(0, rc);
+    assert_int_equal(SHORTCUT_EXEC, result.type);
+    assert_string_equal("devenv.exe solution.sln", result.expanded_target);
+    free(cfg);
+}
+
+/* 12. Single-word alias still works alongside multi-word shortcuts */
+static void test_single_word_alias_with_multi_word_present(void **state) {
+    (void)state;
+    JumpConfig *cfg = make_config();
+    add_shortcut(cfg, SHORTCUT_CD, "My Project", "C:\\MyProject", 1, "my project");
+    add_shortcut(cfg, SHORTCUT_CD, "Work", "C:\\Work", 1, "work");
+
+    ResolveResult result;
+    int rc = resolve_alias(cfg, "work", 0, NULL, &result);
+    assert_int_equal(0, rc);
+    assert_string_equal("C:\\Work", result.expanded_target);
+    free(cfg);
+}
+
 int run_resolver_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_alias_not_found),
@@ -154,6 +211,10 @@ int run_resolver_tests(void) {
         cmocka_unit_test(test_exec_no_placeholders_params_appended),
         cmocka_unit_test(test_second_alias_match),
         cmocka_unit_test(test_empty_config_not_found),
+        cmocka_unit_test(test_multi_word_alias_match),
+        cmocka_unit_test(test_multi_word_alias_case_insensitive),
+        cmocka_unit_test(test_multi_word_alias_exec_with_params),
+        cmocka_unit_test(test_single_word_alias_with_multi_word_present),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

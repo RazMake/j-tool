@@ -8,10 +8,10 @@
 
 ## Recent Changes
 - Memory bank created (2026-05-11) — comprehensive project documentation
+- Multi-word alias support (2026-05-11) — `jump_main()` tries longest multi-word alias first, falls back to single word
 
 ## Current Focus
-- No active development in progress
-- Baseline established, ready for new work
+- Multi-word alias support complete
 
 ## Known Limitations
 | Limitation | Notes |

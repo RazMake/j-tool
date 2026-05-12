@@ -6,7 +6,7 @@
 - [x] Config loading with include processing, constant merging, encoding detection
 - [x] Template expansion (`{{CONSTANT}}` and `{{ENV:VAR}}`)
 - [x] Config validation (duplicate aliases and constants)
-- [x] Alias resolution with case-insensitive lookup
+- [x] Alias resolution with case-insensitive lookup and multi-word alias support
 - [x] Parameter substitution for EXEC shortcuts (`{1}`, `{2}`, …)
 - [x] Fuzzy suggestions via Levenshtein distance
 - [x] OSD overlay (transparent, auto-closing)
@@ -25,3 +25,4 @@
 | Date | Change |
 |------|--------|
 | 2026-05-11 | Memory bank created |
+| 2026-05-11 | Added multi-word alias support (greedy longest-match in jump_main) |

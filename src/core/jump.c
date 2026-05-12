@@ -212,15 +212,45 @@ int jump_main(int argc, char *argv[]) {
         JumpConfig *cfg = (JumpConfig *)calloc(1, sizeof(JumpConfig));
         ResolveResult result;
         int rc;
+        int alias_words;
 
         if (!cfg) return J_EXIT_RUNTIME_ERROR;
         rc = config_load(cfg);
         if (rc != 0) { free(cfg); return rc; }
 
-        rc = resolve_alias(cfg, argv[1],
-                           argc - 2,
-                           (const char **)(argc > 2 ? &argv[2] : NULL),
-                           &result);
+        /* Try multi-word aliases: longest match first.
+         * For "j my project file.txt", tries:
+         *   "my project file.txt" (0 params)
+         *   "my project"          (params: file.txt)
+         *   "my"                  (params: project, file.txt)
+         */
+        rc = J_EXIT_NOT_FOUND;
+        for (alias_words = argc - 1; alias_words >= 1; alias_words--) {
+            char multi_alias[MAX_ALIAS_LEN];
+            size_t pos = 0;
+            int w;
+            int param_start, param_count;
+
+            for (w = 1; w <= alias_words; w++) {
+                size_t wlen = strlen(argv[w]);
+                if (w > 1) {
+                    if (pos >= MAX_ALIAS_LEN - 1) break;
+                    multi_alias[pos++] = ' ';
+                }
+                if (pos + wlen >= MAX_ALIAS_LEN) break;
+                memcpy(multi_alias + pos, argv[w], wlen);
+                pos += wlen;
+            }
+            multi_alias[pos] = '\0';
+
+            param_start = 1 + alias_words;
+            param_count = argc - param_start;
+            rc = resolve_alias(cfg, multi_alias,
+                               param_count,
+                               (const char **)(param_count > 0 ? &argv[param_start] : NULL),
+                               &result);
+            if (rc == 0) break;
+        }
 
         if (rc == J_EXIT_NOT_FOUND) {
             Suggestion suggestions[MAX_SUGGESTIONS];
