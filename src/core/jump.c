@@ -48,9 +48,18 @@ static void print_list(const JumpConfig *cfg) {
     fprintf(stderr, "\n%d shortcut(s) defined.\n", cfg->shortcut_count);
 }
 
-static void spawn_osd(const char *text) {
+static const char *icon_arg(ShortcutType type) {
+    switch (type) {
+    case SHORTCUT_CD:   return "cd";
+    case SHORTCUT_OPEN: return "open";
+    case SHORTCUT_EXEC: return "exec";
+    default:            return "cd";
+    }
+}
+
+static void spawn_osd(const char *text, ShortcutType type) {
     char exe_path[MAX_PATH];
-    char cmd_line[MAX_PATH + MAX_LABEL_LEN + 32];
+    char cmd_line[MAX_PATH + MAX_LABEL_LEN + 64];
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
 
@@ -65,7 +74,8 @@ static void spawn_osd(const char *text) {
         }
     }
 
-    sprintf_s(cmd_line, sizeof(cmd_line), "\"%s\" --osd \"%s\"", exe_path, text);
+    sprintf_s(cmd_line, sizeof(cmd_line), "\"%s\" --osd \"%s\" %s",
+              exe_path, text, icon_arg(type));
 
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
@@ -158,7 +168,12 @@ int jump_main(int argc, char *argv[]) {
     /* --osd mode */
     if (_stricmp(argv[1], "--osd") == 0) {
         if (argc >= 3) {
-            osd_show(argv[2]);
+            OsdIcon icon = OSD_ICON_CD;
+            if (argc >= 4) {
+                if (_stricmp(argv[3], "open") == 0) icon = OSD_ICON_OPEN;
+                else if (_stricmp(argv[3], "exec") == 0) icon = OSD_ICON_EXEC;
+            }
+            osd_show(argv[2], icon);
         }
         return J_EXIT_OK;
     }
@@ -225,7 +240,7 @@ int jump_main(int argc, char *argv[]) {
         }
 
         perform_action(&result);
-        spawn_osd(result.label);
+        spawn_osd(result.label, result.type);
         free(cfg);
         return J_EXIT_OK;
     }
