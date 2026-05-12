@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Jump C)
+project(Jump VERSION 1.0.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -13,6 +13,14 @@ if(MSVC)
     add_compile_options(/W4)
 endif()
 
+# --- Version header ---
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/core/version.h.in"
+    "${CMAKE_BINARY_DIR}/generated/version.h"
+    @ONLY
+)
+include_directories("${CMAKE_BINARY_DIR}/generated")
+
 # --- j_lib: static library with all logic ---
 set(J_LIB_SOURCES
     src/config/ini_parser.c
@@ -23,12 +31,13 @@ set(J_LIB_SOURCES
     src/platform/tc.c
     src/platform/osd.c
     src/platform/install.c
+    src/update/update.c
     src/core/jump.c
 )
 
 add_library(j_lib STATIC ${J_LIB_SOURCES})
-target_include_directories(j_lib PUBLIC src/core src/config src/resolve src/platform)
-target_link_libraries(j_lib PRIVATE advapi32 shell32 user32 gdi32)
+target_include_directories(j_lib PUBLIC src/core src/config src/resolve src/platform src/update "${CMAKE_BINARY_DIR}/generated")
+target_link_libraries(j_lib PRIVATE advapi32 shell32 user32 gdi32 winhttp)
 
 # --- jc: console executable ---
 add_executable(jc src/core/main.c)
@@ -71,7 +80,7 @@ if(BUILD_TESTING)
     add_executable(j_tests ${TEST_SOURCES})
     target_link_libraries(j_tests PRIVATE j_lib cmocka-static)
     target_include_directories(j_tests PRIVATE
-        src/core src/config src/resolve src/platform
+        src/core src/config src/resolve src/platform src/update
         ${cmocka_SOURCE_DIR}/include)
 
     # Make fixture path available to tests

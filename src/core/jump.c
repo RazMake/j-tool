@@ -6,6 +6,8 @@
 #include "osd.h"
 #include "install.h"
 #include "tc.h"
+#include "version.h"
+#include "update.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +16,7 @@
 
 static void print_usage(void) {
     fprintf(stderr,
-        "Jump - quick directory/URL/program launcher\n"
+        "Jump v%s - quick directory/URL/program launcher\n"
         "\n"
         "Usage:\n"
         "  j  <alias> [params...]       Resolve alias and perform action\n"
@@ -22,10 +24,13 @@ static void print_usage(void) {
         "  jc --install [--tc-panel=X]  Install shell integration (X=L|R)\n"
         "  jc --uninstall               Remove shell integration\n"
         "  jc --list                    List all defined aliases\n"
+        "  jc --version                 Show version information\n"
+        "  jc --update                  Check for updates and install\n"
         "  j  --osd \"text\"              Show OSD overlay (internal)\n"
         "\n"
         "Environment:\n"
-        "  JUMPS  Path to root INI configuration file\n");
+        "  JUMPS  Path to root INI configuration file\n",
+        JUMP_VERSION);
 }
 
 static void print_list(const JumpConfig *cfg) {
@@ -291,6 +296,17 @@ int jump_main(int argc, char *argv[]) {
         print_list(cfg);
         free(cfg);
         return J_EXIT_OK;
+    }
+
+    /* --version mode */
+    if (_stricmp(argv[1], "--version") == 0) {
+        fprintf(stderr, "Jump v%s\n", JUMP_VERSION);
+        return J_EXIT_OK;
+    }
+
+    /* --update mode */
+    if (_stricmp(argv[1], "--update") == 0) {
+        return jump_update();
     }
 
     /* Normal mode: resolve alias */
