@@ -1,3 +1,6 @@
+/* Binary config cache — stores parsed shortcuts and constants to avoid
+ * re-parsing INI files on every invocation. Tracks source file mtimes
+ * to automatically invalidate when any config file changes. */
 #ifndef CACHE_H
 #define CACHE_H
 

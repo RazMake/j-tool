@@ -30,6 +30,7 @@ set(J_LIB_SOURCES
     src/resolve/suggest.c
     src/platform/tc.c
     src/platform/osd.c
+    src/platform/error.c
     src/platform/install.c
     src/update/update.c
     src/core/jump.c

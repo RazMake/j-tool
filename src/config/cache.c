@@ -1,3 +1,6 @@
+/* Binary cache for parsed Jump configuration.
+ * Serializes JumpConfig to a flat file (%TEMP%\jump.cache) with
+ * source-file mtimes so stale caches are detected and rebuilt. */
 #include "cache.h"
 #include <string.h>
 #include <stdio.h>

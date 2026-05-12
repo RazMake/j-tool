@@ -7,6 +7,7 @@
 
 typedef struct {
     char alias[MAX_ALIAS_LEN];
+    char label[MAX_LABEL_LEN];  /* Label of the shortcut (for display) */
     int  distance;
 } Suggestion;
 

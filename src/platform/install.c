@@ -1,3 +1,7 @@
+/* Shell integration installer/uninstaller — sets up the `j` command
+ * across CMD (via DOSKEY AutoRun), PowerShell (via $PROFILE function),
+ * adds the exe directory to PATH, and manages Total Commander detection.
+ * All operations are idempotent and print progress to stderr. */
 #include "install.h"
 #include "tc.h"
 #include <windows.h>

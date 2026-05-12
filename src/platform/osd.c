@@ -1,3 +1,6 @@
+/* On-screen display (OSD) overlay — shows a brief, semi-transparent
+ * popup at the bottom of the screen with the action icon and target
+ * label. Auto-dismisses after ~2 seconds. Windows GDI-based. */
 #include <windows.h>
 #include <string.h>
 #include "osd.h"

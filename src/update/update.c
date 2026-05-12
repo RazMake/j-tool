@@ -1,3 +1,6 @@
+/* Auto-updater — checks GitHub Releases for a newer version, downloads
+ * the release zip, extracts j.exe/jc.exe, and replaces the running
+ * executables in-place (old ones renamed to .old for rollback). */
 #include "update.h"
 #include "version.h"
 #include "types.h"

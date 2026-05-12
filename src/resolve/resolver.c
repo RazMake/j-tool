@@ -1,3 +1,7 @@
+/* Alias resolution engine — looks up a user-supplied alias in the
+ * parsed config, expands constants and environment variables in the
+ * target path, and substitutes positional parameters ({1},{2},...)
+ * for EXEC-type shortcuts. */
 #include "resolver.h"
 #include "config.h"
 #include <string.h>

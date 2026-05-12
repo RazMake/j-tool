@@ -1,3 +1,6 @@
+/* INI file parser — lightweight, zero-allocation parser that works on
+ * an in-memory text buffer. Produces an array of sections, each with
+ * an array of key/value entries. */
 #ifndef INI_PARSER_H
 #define INI_PARSER_H
 

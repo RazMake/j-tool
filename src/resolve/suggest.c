@@ -45,6 +45,9 @@ int suggest_aliases(const JumpConfig *cfg, const char *input,
                 /* Still filling up the suggestions array */
                 strncpy(suggestions[count].alias, alias, MAX_ALIAS_LEN - 1);
                 suggestions[count].alias[MAX_ALIAS_LEN - 1] = '\0';
+                /* Copy the parent shortcut's label for display */
+                strncpy(suggestions[count].label, cfg->shortcuts[i].label, MAX_LABEL_LEN - 1);
+                suggestions[count].label[MAX_LABEL_LEN - 1] = '\0';
                 suggestions[count].distance = dist;
                 count++;
                 /* Keep sorted by insertion sort */
@@ -57,6 +60,9 @@ int suggest_aliases(const JumpConfig *cfg, const char *input,
                 /* Replace the worst (last) suggestion */
                 strncpy(suggestions[count - 1].alias, alias, MAX_ALIAS_LEN - 1);
                 suggestions[count - 1].alias[MAX_ALIAS_LEN - 1] = '\0';
+                /* Copy the parent shortcut's label for display */
+                strncpy(suggestions[count - 1].label, cfg->shortcuts[i].label, MAX_LABEL_LEN - 1);
+                suggestions[count - 1].label[MAX_LABEL_LEN - 1] = '\0';
                 suggestions[count - 1].distance = dist;
                 /* Re-sort */
                 for (int k = count - 1; k > 0 && suggestions[k].distance < suggestions[k - 1].distance; k--) {

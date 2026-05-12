@@ -1,9 +1,18 @@
+/*
+ * jump.c - Core dispatch logic for the Jump shortcut launcher.
+ *
+ * Parses CLI arguments, dispatches to the appropriate mode (resolve alias,
+ * install/uninstall, list, OSD overlay, update), and executes the resolved
+ * shortcut action (CD, OPEN, or EXEC).
+ */
+
 #include "jump.h"
 #include "types.h"
 #include "config.h"
 #include "resolver.h"
 #include "suggest.h"
 #include "osd.h"
+#include "error.h"
 #include "install.h"
 #include "tc.h"
 #include "version.h"
@@ -14,6 +23,7 @@
 #include <string.h>
 #include <windows.h>
 
+/* Print usage/help text to stderr */
 static void print_usage(void) {
     fprintf(stderr,
         "Jump v%s - quick directory/URL/program launcher\n"
@@ -33,6 +43,7 @@ static void print_usage(void) {
         JUMP_VERSION);
 }
 
+/* Print all defined shortcuts in tabular format */
 static void print_list(const JumpConfig *cfg) {
     int i, j;
     for (i = 0; i < cfg->shortcut_count; i++) {
@@ -53,6 +64,7 @@ static void print_list(const JumpConfig *cfg) {
     fprintf(stderr, "\n%d shortcut(s) defined.\n", cfg->shortcut_count);
 }
 
+/* Map ShortcutType to icon name string for OSD spawning */
 static const char *icon_arg(ShortcutType type) {
     switch (type) {
     case SHORTCUT_CD:   return "cd";
@@ -62,6 +74,7 @@ static const char *icon_arg(ShortcutType type) {
     }
 }
 
+/* Launch j.exe in a separate process to show OSD notification */
 static void spawn_osd(const char *text, ShortcutType type) {
     char exe_path[MAX_PATH];
     char cmd_line[MAX_PATH + MAX_LABEL_LEN + 64];
@@ -96,6 +109,7 @@ static void spawn_osd(const char *text, ShortcutType type) {
     }
 }
 
+/* Write a temp batch file used by DOSKEY macro for CD support */
 static void write_temp_cmd(const char *content) {
     char path[MAX_PATH];
     DWORD len;
@@ -177,6 +191,7 @@ int exec_needs_ps_wrapper(const char *cmd_line) {
     return (_stricmp(ext, ".ps1") == 0);
 }
 
+/* Execute the resolved shortcut action (CD, OPEN, or EXEC) */
 static void perform_action(const ResolveResult *result) {
     switch (result->type) {
     case SHORTCUT_CD: {
@@ -250,6 +265,8 @@ static void perform_action(const ResolveResult *result) {
 }
 
 int jump_main(int argc, char *argv[]) {
+    error_init();
+
     /* No arguments → help */
     if (argc < 2) {
         print_usage();
@@ -357,15 +374,27 @@ int jump_main(int argc, char *argv[]) {
         if (rc == J_EXIT_NOT_FOUND) {
             Suggestion suggestions[MAX_SUGGESTIONS];
             int count;
-            fprintf(stderr, "error: unknown alias '%s'\n", argv[1]);
+            char error_buf[2048];
+            int pos = 0;
+
+            pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
+                            "Unknown alias '%s'\n", argv[1]);
             count = suggest_aliases(cfg, argv[1], suggestions, MAX_SUGGESTIONS);
             if (count > 0) {
                 int s;
-                fprintf(stderr, "Did you mean:\n");
+                pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
+                                "Did you mean:\n");
                 for (s = 0; s < count; s++) {
-                    fprintf(stderr, "  %s\n", suggestions[s].alias);
+                    if (suggestions[s].label[0])
+                        pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
+                                        "  %s  - %s\n", suggestions[s].alias,
+                                        suggestions[s].label);
+                    else
+                        pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
+                                        "  %s\n", suggestions[s].alias);
                 }
             }
+            error_report("%s", error_buf);
             write_temp_cmd("@rem\n");
             free(cfg);
             return J_EXIT_NOT_FOUND;

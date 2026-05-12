@@ -1,3 +1,5 @@
+/* Auto-updater — checks GitHub Releases for a newer version and
+ * performs an in-place upgrade of the Jump executables. */
 #ifndef JUMP_UPDATE_H
 #define JUMP_UPDATE_H
 

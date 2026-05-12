@@ -1,3 +1,5 @@
+/* Shell integration installer — registers the `j` command in CMD
+ * and PowerShell, adds the exe to PATH, and handles uninstallation. */
 #ifndef INSTALL_H
 #define INSTALL_H
 

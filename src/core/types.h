@@ -1,6 +1,10 @@
+/* Core type definitions and limits for the Jump configuration model.
+ * Defines Shortcut (alias-to-target mappings), Constant (reusable
+ * path fragments), and JumpConfig (the aggregate parsed config). */
 #ifndef JUMP_TYPES_H
 #define JUMP_TYPES_H
 
+/* --- Size limits for all config arrays and strings --- */
 #define MAX_ALIAS_LEN            40
 #define MAX_PATH_LEN             2048
 #define MAX_LABEL_LEN            128
@@ -9,6 +13,7 @@
 #define MAX_CONSTANTS            64
 #define MAX_SOURCE_FILES         32
 
+/* --- Process exit codes (used by shells to detect errors) --- */
 #define J_EXIT_OK                0
 #define J_EXIT_NOT_FOUND         1
 #define J_EXIT_CONFIG_ERROR      2

@@ -1,3 +1,5 @@
+/* OSD overlay — a transient notification popup showing the resolved
+ * shortcut action (CD/Open/Exec) with an icon and label text. */
 #ifndef OSD_H
 #define OSD_H
 

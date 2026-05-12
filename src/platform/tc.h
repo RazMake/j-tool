@@ -1,3 +1,5 @@
+/* Total Commander integration — registry lookup, panel navigation,
+ * and ancestor-process detection for TC-aware directory changes. */
 #ifndef TC_H
 #define TC_H
 

@@ -1,6 +1,11 @@
+/*
+ * config.c – Load, parse, validate and expand Jump shortcut configuration.
+ */
+
 #include "config.h"
 #include "ini_parser.h"
 #include "cache.h"
+#include "error.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,13 +123,13 @@ static int merge_constants(JumpConfig *cfg, const IniFile *ini) {
         /* check dup */
         for (j = 0; j < cfg->constant_count; j++) {
             if (str_icmp(cfg->constants[j].name, sec->entries[i].key) == 0) {
-                fprintf(stderr, "error: duplicate constant '%s'\n",
+                error_report("Duplicate constant '%s'\n",
                         sec->entries[i].key);
                 return -1;
             }
         }
         if (cfg->constant_count >= MAX_CONSTANTS) {
-            fprintf(stderr, "error: too many constants\n");
+            error_report("Too many constants (max %d)\n", MAX_CONSTANTS);
             return -1;
         }
         str_upper(cfg->constants[cfg->constant_count].name,
@@ -159,7 +164,7 @@ static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini) {
             continue;
 
         if (cfg->shortcut_count >= MAX_SHORTCUTS) {
-            fprintf(stderr, "error: too many shortcuts\n");
+            error_report("Too many shortcuts (max %d)\n", MAX_SHORTCUTS);
             return -1;
         }
 
@@ -244,7 +249,7 @@ int config_expand(const JumpConfig *cfg, const char *input,
                         }
                     }
                     if (!found) {
-                        fprintf(stderr, "error: unknown constant '%s'\n", token);
+                        error_report("Unknown constant '%s'\n", token);
                         return -1;
                     }
                 }
@@ -273,8 +278,7 @@ int config_validate(const JumpConfig *cfg) {
                 for (m = start; m < cfg->shortcuts[j].alias_count; m++) {
                     if (str_icmp(cfg->shortcuts[i].aliases[k],
                                  cfg->shortcuts[j].aliases[m]) == 0) {
-                        fprintf(stderr,
-                                "error: duplicate alias '%s'\n",
+                        error_report("Duplicate alias '%s'\n",
                                 cfg->shortcuts[i].aliases[k]);
                         return J_EXIT_CONFIG_ERROR;
                     }
@@ -288,8 +292,7 @@ int config_validate(const JumpConfig *cfg) {
         for (j = i + 1; j < cfg->constant_count; j++) {
             if (str_icmp(cfg->constants[i].name,
                          cfg->constants[j].name) == 0) {
-                fprintf(stderr,
-                        "error: duplicate constant '%s'\n",
+                error_report("Duplicate constant '%s'\n",
                         cfg->constants[i].name);
                 return J_EXIT_CONFIG_ERROR;
             }
@@ -320,14 +323,14 @@ int config_load(JumpConfig *cfg) {
 
     /* 1. Read JUMPS env var */
     if (GetEnvironmentVariableA("JUMPS", jumps_path_a, MAX_PATH) == 0) {
-        fprintf(stderr, "error: JUMPS environment variable not set\n");
+        error_report("JUMPS environment variable not set\n");
         return J_EXIT_CONFIG_ERROR;
     }
     MultiByteToWideChar(CP_ACP, 0, jumps_path_a, -1, jumps_path, MAX_PATH);
 
     /* 2. Cache path */
     if (cache_get_default_path(cache_path, MAX_PATH) != 0) {
-        fprintf(stderr, "error: cannot determine cache path\n");
+        error_report("Cannot determine cache path\n");
         return J_EXIT_CONFIG_ERROR;
     }
 
@@ -340,14 +343,14 @@ int config_load(JumpConfig *cfg) {
     /* 4. Read root INI file */
     raw_len = read_file_bytes(jumps_path, &raw);
     if (raw_len == 0) {
-        fprintf(stderr, "error: cannot read config file\n");
+        error_report("Cannot read config file\n");
         return J_EXIT_CONFIG_ERROR;
     }
 
     utf8 = to_utf8(raw, raw_len, &utf8_len);
     free(raw);
     if (!utf8) {
-        fprintf(stderr, "error: encoding conversion failed\n");
+        error_report("Encoding conversion failed\n");
         return J_EXIT_CONFIG_ERROR;
     }
 
@@ -356,7 +359,7 @@ int config_load(JumpConfig *cfg) {
     if (!ini) { free(utf8); return J_EXIT_CONFIG_ERROR; }
 
     if (ini_parse(utf8, utf8_len, ini) != 0) {
-        fprintf(stderr, "error: parse failed: %s\n", ini->error_msg);
+        error_report("Parse failed: %s\n", ini->error_msg);
         free(utf8); free(ini);
         return J_EXIT_CONFIG_ERROR;
     }
@@ -393,7 +396,7 @@ int config_load(JumpConfig *cfg) {
 
             raw_len = read_file_bytes(inc_path, &raw);
             if (raw_len == 0) {
-                fprintf(stderr, "error: cannot read include file '%s'\n",
+                error_report("Cannot read include file '%s'\n",
                         inc_file);
                 free(ini);
                 return J_EXIT_CONFIG_ERROR;
@@ -407,7 +410,7 @@ int config_load(JumpConfig *cfg) {
             if (!inc_ini) { free(utf8); free(ini); return J_EXIT_CONFIG_ERROR; }
 
             if (ini_parse(utf8, utf8_len, inc_ini) != 0) {
-                fprintf(stderr, "error: parse failed in '%s': %s\n",
+                error_report("Parse failed in '%s': %s\n",
                         inc_file, inc_ini->error_msg);
                 free(utf8); free(inc_ini); free(ini);
                 return J_EXIT_CONFIG_ERROR;

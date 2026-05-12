@@ -1,3 +1,6 @@
+/* Alias resolver — maps a user-typed alias to a fully-expanded
+ * target path, applying constant/env-var expansion and parameter
+ * substitution for EXEC shortcuts. */
 #ifndef RESOLVER_H
 #define RESOLVER_H
 

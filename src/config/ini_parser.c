@@ -1,14 +1,19 @@
+/* INI file parser — converts raw text into structured sections/entries.
+ * Handles comments (;/#), sections ([name]), key=value pairs, and
+ * keyless entries. All lookups are case-insensitive. */
 #include "ini_parser.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
 
+/* Skip leading spaces and tabs (but not newlines). */
 static const char *skip_whitespace(const char *s) {
     while (*s && (*s == ' ' || *s == '\t' || *s == '\r'))
         s++;
     return s;
 }
 
+/* Remove trailing spaces, tabs, and carriage returns in place. */
 static void trim_trailing(char *s) {
     int len = (int)strlen(s);
     while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t' || s[len - 1] == '\r'))

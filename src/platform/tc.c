@@ -1,3 +1,6 @@
+/* Total Commander integration — detects TC installation from the
+ * registry, navigates its panels via command-line IPC, and checks
+ * whether the current process was launched from within TC. */
 #include "tc.h"
 #include <windows.h>
 #include <tlhelp32.h>
@@ -90,6 +93,7 @@ int tc_navigate(const char *directory) {
     return 0;
 }
 
+/* Walk the process tree via toolhelp snapshot to find pid's parent. */
 static DWORD get_parent_pid(DWORD pid) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     PROCESSENTRY32 pe;
