@@ -52,26 +52,50 @@ jobs:
   release:
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
           name: j-exe
           path: release
 
-      - name: List Release Files
-        run: find release -type f
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path release\build-release\j.exe, release\build-release\jc.exe -DestinationPath "dist\jump-${{ steps.version.outputs.VERSION }}-win-x64.zip"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          # Copy executables to build/ so the .iss file can find them
+          New-Item -ItemType Directory -Path build -Force | Out-Null
+          Copy-Item release\build-release\j.exe build\j.exe
+          Copy-Item release\build-release\jc.exe build\jc.exe
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.VERSION }}" installer\jump.iss
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Release v1.0.${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: Release v${{ steps.version.outputs.VERSION }}
           files: |
-            release/build-release/j.exe
-            release/build-release/jc.exe
+            dist/jump-${{ steps.version.outputs.VERSION }}-win-x64.zip
+            dist/jump-${{ steps.version.outputs.VERSION }}-win-x64-setup.exe
             release/CHANGELOG.md
           generate_release_notes: true
