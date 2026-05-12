@@ -15,8 +15,9 @@
 - [x] Alias listing (`--list`)
 - [x] Dual executables (`j.exe` GUI, `jc.exe` console)
 - [x] Static linking (portable, no runtime deps)
-- [x] Comprehensive test suite (~53 tests)
+- [x] Comprehensive test suite (~59 tests, 6→7 test modules)
 - [x] Coverage gate (85% threshold)
+- [x] EXEC shortcut support for .cmd/.bat batch files (cmd.exe /c wrapper)
 
 ## What's Left to Build
 - Nothing planned — v1.0 is complete
@@ -26,3 +27,4 @@
 |------|--------|
 | 2026-05-11 | Memory bank created |
 | 2026-05-11 | Added multi-word alias support (greedy longest-match in jump_main) |
+| 2026-05-11 | Fixed .cmd/.bat EXEC shortcuts: CreateProcessA can't run batch files directly, added cmd.exe /c wrapper with exec_needs_cmd_wrapper() |

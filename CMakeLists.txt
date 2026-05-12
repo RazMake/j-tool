@@ -65,6 +65,7 @@ if(BUILD_TESTING)
         tests/resolve/test_resolver.c
         tests/resolve/test_suggest.c
         tests/platform/test_tc.c
+        tests/core/test_jump.c
     )
 
     add_executable(j_tests ${TEST_SOURCES})

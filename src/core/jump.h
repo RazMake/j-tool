@@ -17,4 +17,8 @@
  */
 int jump_main(int argc, char *argv[]);
 
+/* Returns 1 if the EXEC command line targets a .cmd or .bat script,
+ * meaning it needs a cmd.exe /c wrapper to run via CreateProcessA. */
+int exec_needs_cmd_wrapper(const char *cmd_line);
+
 #endif /* JUMP_MAIN_H */

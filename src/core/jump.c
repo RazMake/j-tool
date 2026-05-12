@@ -108,6 +108,38 @@ static void write_temp_cmd(const char *content) {
     CloseHandle(hFile);
 }
 
+/* Check if an EXEC command line targets a .cmd or .bat script.
+ * Extracts the first token (respecting double-quotes) and checks extension. */
+int exec_needs_cmd_wrapper(const char *cmd_line) {
+    char first_token[MAX_PATH];
+    const char *p = cmd_line;
+    size_t len;
+
+    /* Skip leading whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    if (*p == '"') {
+        /* Quoted path: extract contents between quotes */
+        p++;
+        const char *close = strchr(p, '"');
+        if (!close) return 0;
+        len = (size_t)(close - p);
+    } else {
+        /* Unquoted: first token ends at space or end of string */
+        const char *end = p;
+        while (*end && *end != ' ' && *end != '\t') end++;
+        len = (size_t)(end - p);
+    }
+
+    if (len >= MAX_PATH || len < 4) return 0;
+    memcpy(first_token, p, len);
+    first_token[len] = '\0';
+
+    /* Check for .cmd or .bat extension (case-insensitive) */
+    const char *ext = first_token + len - 4;
+    return (_stricmp(ext, ".cmd") == 0 || _stricmp(ext, ".bat") == 0);
+}
+
 static void perform_action(const ResolveResult *result) {
     switch (result->type) {
     case SHORTCUT_CD: {
@@ -141,8 +173,17 @@ static void perform_action(const ResolveResult *result) {
         STARTUPINFOA si;
         PROCESS_INFORMATION pi;
         char cmd_copy[MAX_PATH_LEN];
+        const char *target = result->expanded_target;
 
-        strcpy_s(cmd_copy, sizeof(cmd_copy), result->expanded_target);
+        /* .cmd/.bat files cannot be launched directly by CreateProcessA;
+         * they must be run through cmd.exe /c */
+        if (exec_needs_cmd_wrapper(target)) {
+            sprintf_s(cmd_copy, sizeof(cmd_copy),
+                      "cmd.exe /c %s", target);
+        } else {
+            strcpy_s(cmd_copy, sizeof(cmd_copy), target);
+        }
+
         memset(&si, 0, sizeof(si));
         si.cb = sizeof(si);
         memset(&pi, 0, sizeof(pi));

@@ -9,9 +9,10 @@
 ## Recent Changes
 - Memory bank created (2026-05-11) — comprehensive project documentation
 - Multi-word alias support (2026-05-11) — `jump_main()` tries longest multi-word alias first, falls back to single word
+- .cmd/.bat EXEC fix (2026-05-11) — batch file shortcuts now wrapped with `cmd.exe /c` since `CreateProcessA` cannot execute them directly
 
 ## Current Focus
-- Multi-word alias support complete
+- Bug fix: .cmd/.bat EXEC shortcut execution complete
 
 ## Known Limitations
 | Limitation | Notes |
