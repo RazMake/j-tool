@@ -31,6 +31,7 @@ int resolve_alias(const JumpConfig *cfg, const char *alias,
 
     /* Populate result */
     result->type = match->type;
+    result->hide_console = match->hide_console;
     strncpy(result->label, match->label, MAX_LABEL_LEN - 1);
     result->label[MAX_LABEL_LEN - 1] = '\0';
 

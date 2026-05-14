@@ -191,6 +191,38 @@ int exec_needs_ps_wrapper(const char *cmd_line) {
     return (_stricmp(ext, ".ps1") == 0);
 }
 
+/* Check if an EXEC command line targets a .vbs script.
+ * Extracts the first token (respecting double-quotes) and checks extension. */
+int exec_needs_vbs_wrapper(const char *cmd_line) {
+    char first_token[MAX_PATH];
+    const char *p = cmd_line;
+    size_t len;
+
+    /* Skip leading whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    if (*p == '"') {
+        /* Quoted path: extract contents between quotes */
+        p++;
+        const char *close = strchr(p, '"');
+        if (!close) return 0;
+        len = (size_t)(close - p);
+    } else {
+        /* Unquoted: first token ends at space or end of string */
+        const char *end = p;
+        while (*end && *end != ' ' && *end != '\t') end++;
+        len = (size_t)(end - p);
+    }
+
+    if (len >= MAX_PATH || len < 4) return 0;
+    memcpy(first_token, p, len);
+    first_token[len] = '\0';
+
+    /* Check for .vbs extension (case-insensitive) */
+    const char *ext = first_token + len - 4;
+    return (_stricmp(ext, ".vbs") == 0);
+}
+
 /* Execute the resolved shortcut action (CD, OPEN, or EXEC) */
 static void perform_action(const ResolveResult *result) {
     switch (result->type) {
@@ -226,6 +258,7 @@ static void perform_action(const ResolveResult *result) {
         PROCESS_INFORMATION pi;
         char cmd_copy[MAX_PATH_LEN];
         const char *target = result->expanded_target;
+        DWORD creation_flags = 0;
 
         /* .cmd/.bat files cannot be launched directly by CreateProcessA;
          * they must be run through cmd.exe /c */
@@ -236,6 +269,14 @@ static void perform_action(const ResolveResult *result) {
             /* .ps1 scripts need PowerShell; try pwsh first, fall back to powershell */
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "pwsh -NoProfile -ExecutionPolicy Bypass -File %s", target);
+        } else if (exec_needs_vbs_wrapper(target)) {
+            /* .vbs scripts need a Windows Script Host. Use wscript.exe when the
+             * caller asked to hide the console (it is windowed by default and
+             * never shows a console), otherwise cscript.exe so any WScript.Echo
+             * output is visible in the current console. */
+            const char *host = result->hide_console ? "wscript.exe" : "cscript.exe";
+            sprintf_s(cmd_copy, sizeof(cmd_copy),
+                      "%s //Nologo %s", host, target);
         } else {
             strcpy_s(cmd_copy, sizeof(cmd_copy), target);
         }
@@ -244,8 +285,14 @@ static void perform_action(const ResolveResult *result) {
         si.cb = sizeof(si);
         memset(&pi, 0, sizeof(pi));
 
+        if (result->hide_console) {
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            creation_flags |= CREATE_NO_WINDOW;
+        }
+
         if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
-                           0, NULL, NULL, &si, &pi)) {
+                           creation_flags, NULL, NULL, &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         } else if (exec_needs_ps_wrapper(target)) {
@@ -253,7 +300,7 @@ static void perform_action(const ResolveResult *result) {
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "powershell -NoProfile -ExecutionPolicy Bypass -File %s", target);
             if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
-                               0, NULL, NULL, &si, &pi)) {
+                               creation_flags, NULL, NULL, &si, &pi)) {
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
             }

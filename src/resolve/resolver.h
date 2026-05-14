@@ -10,6 +10,7 @@ typedef struct {
     ShortcutType type;
     char expanded_target[MAX_PATH_LEN];
     char label[MAX_LABEL_LEN];
+    int  hide_console;   /* EXEC-only: hide console window of spawned process */
 } ResolveResult;
 
 /*

@@ -76,7 +76,8 @@ Each section (other than `[Constants]` and `[Include]`) defines a shortcut:
 | `Label` | Text shown in the OSD overlay and `--list` output |
 | `Path` | Directory to `cd` into |
 | `Open` | URL or file to open via the system handler |
-| `Execute` | Command line to run. `{1}`, `{2}`, … are replaced with extra arguments |
+| `Execute` | Command line to run. `{1}`, `{2}`, … are replaced with extra arguments. Supports `.exe`, `.cmd`/`.bat`, `.ps1`, and `.vbs` script targets (auto-wrapped in the appropriate host: `cmd.exe /c`, `pwsh`/`powershell -File`, or `cscript`/`wscript`). |
+| `HideConsole` | EXEC-only. When `true` (or `yes`/`1`) the spawned process runs without a visible console window. For `.vbs` targets this also selects `wscript.exe` over `cscript.exe`. |
 
 `{{CONSTANT}}` references are expanded from the merged `[Constants]` sections.
 `{{ENV:VARNAME}}` references are expanded from environment variables.

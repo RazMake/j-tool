@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **VBS script execution** — `Execute=` targets ending in `.vbs` are auto-launched through the Windows Script Host (`cscript.exe`, or `wscript.exe` when `HideConsole=true`).
+- **`HideConsole` flag** — EXEC shortcuts may set `HideConsole=true` to suppress the console window of the spawned process. Applies to `.exe`, `.cmd`/`.bat`, `.ps1`, and `.vbs` targets.
+
 ## v1.0 — Initial Release
 
 ### Features

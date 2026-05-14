@@ -25,4 +25,8 @@ int exec_needs_cmd_wrapper(const char *cmd_line);
  * meaning it needs a PowerShell wrapper (pwsh or powershell) to run. */
 int exec_needs_ps_wrapper(const char *cmd_line);
 
+/* Returns 1 if the EXEC command line targets a .vbs script,
+ * meaning it needs a script-host wrapper (cscript or wscript) to run. */
+int exec_needs_vbs_wrapper(const char *cmd_line);
+
 #endif /* JUMP_MAIN_H */

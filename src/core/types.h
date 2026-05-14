@@ -31,6 +31,7 @@ typedef struct {
     char label[MAX_LABEL_LEN];
     char target[MAX_PATH_LEN];
     ShortcutType type;
+    int  hide_console;   /* EXEC-only: hide console window of spawned process */
 } Shortcut;
 
 typedef struct {

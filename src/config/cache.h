@@ -8,7 +8,7 @@
 #include <windows.h>
 
 #define CACHE_MAGIC   0x4A554D50  /* "JUMP" */
-#define CACHE_VERSION 1
+#define CACHE_VERSION 2
 
 typedef struct {
     wchar_t  path[MAX_PATH];

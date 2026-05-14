@@ -184,8 +184,14 @@ static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini) {
             sc->type = SHORTCUT_OPEN;
             strncpy_s(sc->target, MAX_PATH_LEN, open_val, _TRUNCATE);
         } else {
+            const char *hide_val = ini_find_value(sec, "HideConsole");
             sc->type = SHORTCUT_EXEC;
             strncpy_s(sc->target, MAX_PATH_LEN, exec_val, _TRUNCATE);
+            if (hide_val && (str_icmp(hide_val, "true") == 0 ||
+                             str_icmp(hide_val, "yes") == 0 ||
+                             str_icmp(hide_val, "1") == 0)) {
+                sc->hide_console = 1;
+            }
         }
 
         strncpy_s(jumps_copy, sizeof(jumps_copy), jumps_val, _TRUNCATE);
