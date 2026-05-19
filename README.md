@@ -1,30 +1,22 @@
-# Jump
+# J-Tool (aka. Jump)
 
-A fast, lightweight directory/URL/program launcher for Windows. Define aliases in INI files and jump to directories, open URLs, or launch programs with a single short command.
+A fast, lightweight shortcut tool for Windows. It allows the user to define shortcuts that are invoked with `j <shortcut>` to perform the action.  
+Possible actions are:  
+- Change to a specific folder (_on any drive on the computer_)
+- Open a specific URL with the default browser
+- Start a program (_with a specific command line_)
 
 ## Features
 
-- **Directory navigation** — Type `j work` to `cd` into a mapped directory instantly.
-- **URL opening** — Aliases can open websites in your default browser.
-- **Program execution** — Launch programs with parameter substitution (`{1}`, `{2}`, …).
-- **INI-based configuration** — Human-readable config with `[Include]` support to split shortcuts across multiple files.
+- **INI-based configuration** — Human-readable config with `[Include]` support to split shortcuts across multiple files (_for easier management_).
 - **Constants & environment variables** — Use `{{CONSTANT}}` and `{{ENV:VARNAME}}` placeholders in targets.
 - **Binary caching** — Configs are compiled to a binary cache and only re-parsed when source files change.
 - **OSD overlay** — A brief, transparent on-screen popup confirms which shortcut was activated.
-- **Fuzzy suggestions** — Mistype an alias and Jump suggests the closest matches (Levenshtein distance).
-- **Shell integration** — Automatic setup for CMD (DOSKEY macro), PowerShell (`$PROFILE` function), and Total Commander panel switching.
+- **Fuzzy suggestions** — Mistype an alias and Jump suggests the closest matches (_Levenshtein distance_).
+- **Shell integration** — Automatic setup for CMD (DOSKEY macro), PowerShell (`$PROFILE` function), and _**Total Commander**_ panel switching.
 - **Portable** — Statically linked, no runtime dependencies.
 
 ## Usage
-
-```
-j  <alias> [params...]        Resolve alias and perform action
-jc <alias> [params...]        Same, with console output
-jc --install [--tc-panel=L|R] Install shell integration
-jc --uninstall                Remove shell integration
-jc --list                     List all defined aliases
-j  --osd "text"               Show OSD overlay (internal)
-```
 
 Two executables are produced:
 
@@ -33,18 +25,35 @@ Two executables are produced:
 | `j.exe` | Windows | Silent operation + OSD display (no console window) |
 | `jc.exe` | Console | Interactive use, prints output to the terminal |
 
+```
+j  <alias> [params...]        Resolve alias and perform action
+jc <alias> [params...]        Same, with console output
+jc --install [--tc-panel=L|R] Install shell integration
+jc --uninstall                Remove shell integration
+jc --list                     List all defined aliases
+jc --update                   Pulls the latest version from the GitHub repository.
+j  --osd "text"               Show OSD overlay (internal)
+```
+
 ## Configuration
 
 Set the `JUMPS` environment variable to the path of your root INI file. The installer (`jc --install`) will prompt for this if it is not already set.
 
 ### INI format
 
+It is possible to split the config into a machine specific file and then general one. This would help for multi machine configs:
+- Create one INI file for each machine (stored locally), which define the specific locations as constants.
+- Create files for the common jumps in a shared location (_i.e. in OneDrive_) and use the constants in those files.  
+
+Then on each machine the jumps (shortcuts) will work the same way, even if there are slight differences in the folder configuration.
+
 ```ini
-; Root config
+; Root config (or machine specific config)
 [Constants]
 PROJECTS=C:\Projects
 TOOLS=D:\Tools
 
+; These files contain specific jumps
 [Include]
 work.ini
 personal.ini
