@@ -27,6 +27,12 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Set version in CMakeLists.txt
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          (Get-Content CMakeLists.txt -Raw) -replace 'project\s*\(\s*Jump\s+VERSION\s+[\d.]+', "project(Jump VERSION $version" | Set-Content CMakeLists.txt -NoNewline
+
       - name: Configure CMake
         run: cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 

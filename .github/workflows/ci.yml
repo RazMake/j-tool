@@ -33,6 +33,13 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
+      - name: Set release version
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          (Get-Content CMakeLists.txt -Raw) -replace 'project\s*\(\s*Jump\s+VERSION\s+[\d.]+', "project(Jump VERSION $version" | Set-Content CMakeLists.txt -NoNewline
+
       - name: Build Release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
