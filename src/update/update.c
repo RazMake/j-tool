@@ -431,8 +431,8 @@ static int replace_executable(const char *exe_dir, const char *temp_dir,
         }
     }
 
-    /* Move new file into place */
-    if (!MoveFileExA(new_src, old_path, MOVEFILE_REPLACE_EXISTING)) {
+    /* Move new file into place (MOVEFILE_COPY_ALLOWED for cross-drive moves) */
+    if (!MoveFileExA(new_src, old_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
         fprintf(stderr, "  Cannot move new %s into place (error %lu)\n",
                 exe_name, GetLastError());
         /* Try to restore backup */

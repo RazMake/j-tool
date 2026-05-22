@@ -17,6 +17,12 @@ if (-not $Version) {
 
 Write-Host "Building Jump v$Version (Release)" -ForegroundColor Cyan
 
+# Update version in CMakeLists.txt so it flows into version.h
+$cmakePath = "$PSScriptRoot\CMakeLists.txt"
+$cmakeText = Get-Content $cmakePath -Raw
+$cmakeText = $cmakeText -replace 'project\s*\(\s*Jump\s+VERSION\s+[\d.]+', "project(Jump VERSION $Version"
+Set-Content $cmakePath $cmakeText -NoNewline
+
 # Configure CMake for Release
 Write-Host "`nConfiguring CMake..." -ForegroundColor Yellow
 & "$PSScriptRoot\build_env.ps1" cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
