@@ -32,6 +32,7 @@ set(J_LIB_SOURCES
     src/platform/osd.c
     src/platform/error.c
     src/platform/install.c
+    src/platform/log.c
     src/update/update.c
     src/core/jump.c
 )

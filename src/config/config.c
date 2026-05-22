@@ -6,6 +6,7 @@
 #include "ini_parser.h"
 #include "cache.h"
 #include "error.h"
+#include "log.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -233,8 +234,12 @@ int config_expand(const JumpConfig *cfg, const char *input,
                     char env_val[MAX_PATH_LEN];
                     DWORD r = GetEnvironmentVariableA(token + 4, env_val,
                                                      (DWORD)sizeof(env_val));
-                    if (r == 0) env_val[0] = '\0';
+                    if (r == 0) {
+                        log_write("CFG40", "ENV var '%s' not set, expanding to empty", token + 4);
+                        env_val[0] = '\0';
+                    }
                     if (wp + r >= out_size) {
+                        log_write("CFG41", "Buffer too small expanding ENV:'%s'", token + 4);
                         return -1; /* buffer too small */
                     }
                     memcpy(out_buf + wp, env_val, r);
@@ -255,6 +260,7 @@ int config_expand(const JumpConfig *cfg, const char *input,
                         }
                     }
                     if (!found) {
+                        log_write("CFG42", "Unknown constant '%s'", token);
                         error_report("Unknown constant '%s'\n", token);
                         return -1;
                     }
@@ -326,49 +332,70 @@ int config_load(JumpConfig *cfg) {
     WIN32_FILE_ATTRIBUTE_DATA fattr;
 
     memset(cfg, 0, sizeof(JumpConfig));
+    log_write("CFG01", "config_load started");
 
     /* 1. Read JUMPS env var */
     if (GetEnvironmentVariableA("JUMPS", jumps_path_a, MAX_PATH) == 0) {
+        log_write("CFG02", "JUMPS env var not set (err=%lu)", GetLastError());
         error_report("JUMPS environment variable not set\n");
         return J_EXIT_CONFIG_ERROR;
     }
+    log_write("CFG03", "JUMPS='%s'", jumps_path_a);
     MultiByteToWideChar(CP_ACP, 0, jumps_path_a, -1, jumps_path, MAX_PATH);
 
     /* 2. Cache path */
     if (cache_get_default_path(cache_path, MAX_PATH) != 0) {
+        log_write("CFG04", "Cannot determine cache path");
         error_report("Cannot determine cache path\n");
         return J_EXIT_CONFIG_ERROR;
     }
 
     /* 3. Try cache */
     if (cache_is_fresh(cache_path)) {
-        if (cache_load(cache_path, cfg) == 0)
+        log_write("CFG05", "Cache is fresh, attempting cache load");
+        if (cache_load(cache_path, cfg) == 0) {
+            log_write("CFG06", "Cache loaded: %d shortcuts, %d constants",
+                      cfg->shortcut_count, cfg->constant_count);
             return 0;
+        }
+        log_write("CFG07", "Cache load failed despite being fresh, re-parsing");
+    } else {
+        log_write("CFG08", "Cache is stale or missing, will parse INI files");
     }
 
     /* 4. Read root INI file */
     raw_len = read_file_bytes(jumps_path, &raw);
     if (raw_len == 0) {
+        log_write("CFG09", "Cannot read config file at JUMPS path");
         error_report("Cannot read config file\n");
         return J_EXIT_CONFIG_ERROR;
     }
+    log_write("CFG10", "Read root INI file: %lu bytes", (unsigned long)raw_len);
 
     utf8 = to_utf8(raw, raw_len, &utf8_len);
     free(raw);
     if (!utf8) {
+        log_write("CFG11", "Encoding conversion failed");
         error_report("Encoding conversion failed\n");
         return J_EXIT_CONFIG_ERROR;
     }
+    log_write("CFG12", "Converted to UTF-8: %lu bytes", (unsigned long)utf8_len);
 
     /* 5. Parse root */
     ini = (IniFile *)calloc(1, sizeof(IniFile));
-    if (!ini) { free(utf8); return J_EXIT_CONFIG_ERROR; }
+    if (!ini) {
+        log_write("CFG13", "Failed to allocate IniFile for root");
+        free(utf8);
+        return J_EXIT_CONFIG_ERROR;
+    }
 
     if (ini_parse(utf8, utf8_len, ini) != 0) {
+        log_write("CFG14", "Root INI parse failed: %s", ini->error_msg);
         error_report("Parse failed: %s\n", ini->error_msg);
         free(utf8); free(ini);
         return J_EXIT_CONFIG_ERROR;
     }
+    log_write("CFG15", "Root INI parsed: %d sections", ini->section_count);
     free(utf8);
 
     /* Record root source file */
@@ -379,9 +406,11 @@ int config_load(JumpConfig *cfg) {
 
     /* 6. Extract constants from root */
     if (merge_constants(cfg, ini) != 0) {
+        log_write("CFG16", "merge_constants failed for root file");
         free(ini);
         return J_EXIT_CONFIG_ERROR;
     }
+    log_write("CFG17", "Root constants merged: %d total", cfg->constant_count);
 
     /* Get root directory for resolving includes */
     get_directory(jumps_path, root_dir, MAX_PATH);
@@ -389,12 +418,15 @@ int config_load(JumpConfig *cfg) {
     /* 7. Process [Include] section */
     inc_sec = ini_find_section(ini, "Include");
     if (inc_sec) {
+        log_write("CFG18", "Processing [Include] section: %d entries",
+                  inc_sec->entry_count);
         for (i = 0; i < inc_sec->entry_count; i++) {
             const char *inc_file = inc_sec->entries[i].value;
             wchar_t inc_path[MAX_PATH];
             wchar_t inc_file_w[MAX_PATH];
             IniFile *inc_ini;
 
+            log_write("CFG19", "Including file: '%s'", inc_file);
             MultiByteToWideChar(CP_UTF8, 0, inc_file, -1,
                                 inc_file_w, MAX_PATH);
             _snwprintf_s(inc_path, MAX_PATH, _TRUNCATE, L"%s\\%s",
@@ -402,35 +434,52 @@ int config_load(JumpConfig *cfg) {
 
             raw_len = read_file_bytes(inc_path, &raw);
             if (raw_len == 0) {
+                log_write("CFG20", "Cannot read include file '%s'", inc_file);
                 error_report("Cannot read include file '%s'\n",
                         inc_file);
                 free(ini);
                 return J_EXIT_CONFIG_ERROR;
             }
+            log_write("CFG21", "Read include file '%s': %lu bytes",
+                      inc_file, (unsigned long)raw_len);
 
             utf8 = to_utf8(raw, raw_len, &utf8_len);
             free(raw);
-            if (!utf8) { free(ini); return J_EXIT_CONFIG_ERROR; }
+            if (!utf8) {
+                log_write("CFG22", "Encoding conversion failed for '%s'", inc_file);
+                free(ini);
+                return J_EXIT_CONFIG_ERROR;
+            }
 
             inc_ini = (IniFile *)calloc(1, sizeof(IniFile));
-            if (!inc_ini) { free(utf8); free(ini); return J_EXIT_CONFIG_ERROR; }
+            if (!inc_ini) {
+                log_write("CFG23", "Failed to allocate IniFile for '%s'", inc_file);
+                free(utf8); free(ini);
+                return J_EXIT_CONFIG_ERROR;
+            }
 
             if (ini_parse(utf8, utf8_len, inc_ini) != 0) {
+                log_write("CFG24", "Parse failed in '%s': %s",
+                          inc_file, inc_ini->error_msg);
                 error_report("Parse failed in '%s': %s\n",
                         inc_file, inc_ini->error_msg);
                 free(utf8); free(inc_ini); free(ini);
                 return J_EXIT_CONFIG_ERROR;
             }
+            log_write("CFG25", "Parsed include '%s': %d sections",
+                      inc_file, inc_ini->section_count);
             free(utf8);
 
             /* 8. Merge constants from included file */
             if (merge_constants(cfg, inc_ini) != 0) {
+                log_write("CFG26", "merge_constants failed for '%s'", inc_file);
                 free(inc_ini); free(ini);
                 return J_EXIT_CONFIG_ERROR;
             }
 
             /* 9. Extract shortcuts from included file */
             if (extract_shortcuts(cfg, inc_ini) != 0) {
+                log_write("CFG27", "extract_shortcuts failed for '%s'", inc_file);
                 free(inc_ini); free(ini);
                 return J_EXIT_CONFIG_ERROR;
             }
@@ -443,25 +492,42 @@ int config_load(JumpConfig *cfg) {
                                          &fattr))
                     sources[source_count].mtime = fattr.ftLastWriteTime;
                 source_count++;
+            } else {
+                log_write("CFG28", "Max source files reached (%d), cannot track '%s'",
+                          MAX_SOURCE_FILES, inc_file);
             }
 
             free(inc_ini);
         }
+    } else {
+        log_write("CFG29", "No [Include] section found");
     }
 
     /* 9 cont. Extract shortcuts from root file */
     if (extract_shortcuts(cfg, ini) != 0) {
+        log_write("CFG30", "extract_shortcuts failed for root file");
         free(ini);
         return J_EXIT_CONFIG_ERROR;
     }
     free(ini);
+    log_write("CFG31", "All shortcuts extracted: %d total", cfg->shortcut_count);
 
     /* 10. Validate */
     ret = config_validate(cfg);
-    if (ret != 0) return ret;
+    if (ret != 0) {
+        log_write("CFG32", "config_validate failed with %d", ret);
+        return ret;
+    }
+    log_write("CFG33", "Config validated successfully");
 
     /* 11-12. Save cache */
-    cache_save(cache_path, cfg, sources, source_count);
+    if (cache_save(cache_path, cfg, sources, source_count) != 0) {
+        log_write("CFG34", "cache_save failed (non-fatal)");
+    } else {
+        log_write("CFG35", "Cache saved: %d source files tracked", source_count);
+    }
 
+    log_write("CFG36", "config_load completed: %d shortcuts, %d constants",
+              cfg->shortcut_count, cfg->constant_count);
     return 0;
 }

@@ -32,6 +32,7 @@ jc --install [--tc-panel=L|R] Install shell integration
 jc --uninstall                Remove shell integration
 jc --list                     List all defined aliases
 jc --update                   Pulls the latest version from the GitHub repository.
+jc --log                      Enable diagnostic logging for the next command
 j  --osd "text"               Show OSD overlay (internal)
 ```
 
@@ -91,6 +92,29 @@ Each section (other than `[Constants]` and `[Include]`) defines a shortcut:
 `{{CONSTANT}}` references are expanded from the merged `[Constants]` sections.
 `{{ENV:VARNAME}}` references are expanded from environment variables.
 
+## Debugging
+
+Run `jc --log` to enable one-shot diagnostic logging. The **next** command you run will write a detailed log to `%TEMP%\jump_YYYYMMDD_HHMMSS.log` (timestamped), after which the flag is automatically cleared. This is useful for diagnosing configuration loading, cache, alias resolution, and action execution issues.
+
+```
+jc --log              # Enable logging (does NOT read config or cache)
+j  myalias            # This run is logged to %TEMP%\jump_20260521_143022.log
+j  myalias            # This run is NOT logged (flag was cleared)
+```
+
+The `--log` flag intentionally does **not** read config or touch the cache, so it can be used to debug first-run / bootstrap problems.
+
+Every log line contains a unique identifier (e.g. `[JMP01]`, `[CFG03]`, `[CAC10]`) that maps to the exact call site in the source code.
+
+| Prefix | Source file |
+|--------|------------|
+| `LOG` | `log.c` — logging infrastructure |
+| `JMP` | `jump.c` — CLI dispatch & action execution |
+| `CFG` | `config.c` — INI loading, expansion, validation |
+| `CAC` | `cache.c` — binary cache read/write/freshness |
+| `RES` | `resolver.c` — alias lookup & parameter substitution |
+| `TC_` | `tc.c` — Total Commander integration |
+
 ## Developer Setup
 
 ### New machine (automated)
@@ -147,6 +171,7 @@ The following files are excluded from coverage measurement:
 | `main_win.c` | Thin entry point (`WinMain` → `jump_main`); no logic to test. |
 | `jump.c` | Top-level dispatch: spawns processes, calls `ShellExecute`, writes temp files, and interacts with the console handle — all side-effects that require a live Windows session. |
 | `install.c` | Modifies the registry, `$PROFILE`, `PATH`, and broadcasts `WM_SETTINGCHANGE` — destructive system-level side-effects unsuitable for unit tests. |
+| `log.c` | File I/O to `%TEMP%` and flag-file management — platform glue not exercisable in the test harness. |
 
 The same exclusions are applied in the CI pipeline.
 

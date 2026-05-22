@@ -7,12 +7,13 @@
 - Coverage gate set at 85%
 
 ## Recent Changes
+- Diagnostic logging (2026-05-21) — `--log` flag enables one-shot logging to `%TEMP%\jump.log` for debugging
 - Memory bank created (2026-05-11) — comprehensive project documentation
 - Multi-word alias support (2026-05-11) — `jump_main()` tries longest multi-word alias first, falls back to single word
 - .cmd/.bat EXEC fix (2026-05-11) — batch file shortcuts now wrapped with `cmd.exe /c` since `CreateProcessA` cannot execute them directly
 
 ## Current Focus
-- Bug fix: .cmd/.bat EXEC shortcut execution complete
+- Diagnostic logging feature added
 
 ## Known Limitations
 | Limitation | Notes |

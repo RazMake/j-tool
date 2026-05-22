@@ -2,6 +2,7 @@
  * registry, navigates its panels via command-line IPC, and checks
  * whether the current process was launched from within TC. */
 #include "tc.h"
+#include "log.h"
 #include <windows.h>
 #include <tlhelp32.h>
 #include <string.h>
@@ -76,14 +77,21 @@ int tc_navigate(const char *directory) {
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
 
+    log_write("TC_01", "tc_navigate: dir='%s'", directory);
+
     /* Only act if TC is already running */
-    if (!FindWindowA("TTOTAL_CMD", NULL))
+    if (!FindWindowA("TTOTAL_CMD", NULL)) {
+        log_write("TC_02", "tc_navigate: TC window not found");
         return -1;
+    }
 
     /* Try registry first, then fall back to ancestor process path */
     if (tc_find_path(tc_path, sizeof(tc_path)) != 0 &&
-        tc_find_ancestor_path(tc_path, sizeof(tc_path)) != 0)
+        tc_find_ancestor_path(tc_path, sizeof(tc_path)) != 0) {
+        log_write("TC_03", "tc_navigate: TC executable not found");
         return -1;
+    }
+    log_write("TC_04", "tc_navigate: TC path='%s'", tc_path);
 
     /* Navigate the source (active) panel */
     if (tc_build_cd_command(tc_path, "L", directory,
@@ -95,8 +103,10 @@ int tc_navigate(const char *directory) {
     memset(&pi, 0, sizeof(pi));
 
     if (!CreateProcessA(NULL, cmd_buf, NULL, NULL, FALSE,
-                        0, NULL, NULL, &si, &pi))
+                        0, NULL, NULL, &si, &pi)) {
+        log_write("TC_05", "tc_navigate: CreateProcess failed (err=%lu)", GetLastError());
         return -1;
+    }
 
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
@@ -160,5 +170,7 @@ int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
 
 int tc_is_ancestor(void) {
     char tc_path[MAX_PATH];
-    return tc_find_ancestor_path(tc_path, sizeof(tc_path)) == 0 ? 1 : 0;
+    int result = tc_find_ancestor_path(tc_path, sizeof(tc_path)) == 0 ? 1 : 0;
+    log_write("TC_06", "tc_is_ancestor: %s", result ? "yes" : "no");
+    return result;
 }

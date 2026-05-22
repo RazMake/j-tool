@@ -17,6 +17,7 @@
 #include "tc.h"
 #include "version.h"
 #include "update.h"
+#include "log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,7 @@ static void print_usage(void) {
         "  jc --list                    List all defined aliases\n"
         "  jc --version                 Show version information\n"
         "  jc --update                  Check for updates and install\n"
+        "  jc --log                     Enable logging for the next command\n"
         "  j  --osd \"text\"              Show OSD overlay (internal)\n"
         "\n"
         "Environment:\n"
@@ -225,11 +227,15 @@ int exec_needs_vbs_wrapper(const char *cmd_line) {
 
 /* Execute the resolved shortcut action (CD, OPEN, or EXEC) */
 static void perform_action(const ResolveResult *result) {
+    log_write("JMP30", "perform_action: type=%d, target='%s'",
+              result->type, result->expanded_target);
     switch (result->type) {
     case SHORTCUT_CD: {
         /* Navigate TC panel only if launched from TC */
-        if (tc_is_ancestor())
+        if (tc_is_ancestor()) {
+            log_write("JMP31", "TC ancestor detected, navigating panel");
             tc_navigate(result->expanded_target);
+        }
         /* Write path to stdout for PowerShell wrapper */
         HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hStdout && hStdout != INVALID_HANDLE_VALUE) {
@@ -237,6 +243,9 @@ static void perform_action(const ResolveResult *result) {
             WriteFile(hStdout, result->expanded_target,
                       (DWORD)strlen(result->expanded_target), &written, NULL);
             WriteFile(hStdout, "\n", 1, &written, NULL);
+            log_write("JMP32", "CD: wrote path to stdout");
+        } else {
+            log_write("JMP33", "CD: stdout handle unavailable");
         }
         /* Write temp cmd file for DOSKEY macro */
         {
@@ -248,6 +257,7 @@ static void perform_action(const ResolveResult *result) {
         break;
     }
     case SHORTCUT_OPEN:
+        log_write("JMP34", "OPEN: ShellExecute('%s')", result->expanded_target);
         ShellExecuteA(NULL, "open", result->expanded_target,
                       NULL, NULL, SW_SHOWNORMAL);
         write_temp_cmd("@rem\n");
@@ -263,9 +273,11 @@ static void perform_action(const ResolveResult *result) {
         /* .cmd/.bat files cannot be launched directly by CreateProcessA;
          * they must be run through cmd.exe /c */
         if (exec_needs_cmd_wrapper(target)) {
+            log_write("JMP35", "EXEC: target is .cmd/.bat, wrapping with cmd.exe");
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "cmd.exe /c %s", target);
         } else if (exec_needs_ps_wrapper(target)) {
+            log_write("JMP36", "EXEC: target is .ps1, wrapping with pwsh");
             /* .ps1 scripts need PowerShell; try pwsh first, fall back to powershell */
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "pwsh -NoProfile -ExecutionPolicy Bypass -File %s", target);
@@ -275,11 +287,16 @@ static void perform_action(const ResolveResult *result) {
              * never shows a console), otherwise cscript.exe so any WScript.Echo
              * output is visible in the current console. */
             const char *host = result->hide_console ? "wscript.exe" : "cscript.exe";
+            log_write("JMP37", "EXEC: target is .vbs, wrapping with %s", host);
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "%s //Nologo %s", host, target);
         } else {
+            log_write("JMP38", "EXEC: direct launch");
             strcpy_s(cmd_copy, sizeof(cmd_copy), target);
         }
+
+        log_write("JMP39", "EXEC: final command='%s', hide=%d",
+                  cmd_copy, result->hide_console);
 
         memset(&si, 0, sizeof(si));
         si.cb = sizeof(si);
@@ -293,17 +310,26 @@ static void perform_action(const ResolveResult *result) {
 
         if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
                            creation_flags, NULL, NULL, &si, &pi)) {
+            log_write("JMP40", "EXEC: CreateProcess succeeded");
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         } else if (exec_needs_ps_wrapper(target)) {
+            log_write("JMP41", "EXEC: pwsh failed (err=%lu), falling back to powershell.exe",
+                      GetLastError());
             /* pwsh not found, fall back to powershell.exe */
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "powershell -NoProfile -ExecutionPolicy Bypass -File %s", target);
             if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
                                creation_flags, NULL, NULL, &si, &pi)) {
+                log_write("JMP42", "EXEC: powershell.exe fallback succeeded");
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
+            } else {
+                log_write("JMP43", "EXEC: powershell.exe fallback also failed (err=%lu)",
+                          GetLastError());
             }
+        } else {
+            log_write("JMP44", "EXEC: CreateProcess failed (err=%lu)", GetLastError());
         }
         write_temp_cmd("@rem\n");
         break;
@@ -312,65 +338,122 @@ static void perform_action(const ResolveResult *result) {
 }
 
 int jump_main(int argc, char *argv[]) {
+    int exit_code;
+
     error_init();
+
+    /* --log mode: set flag and exit immediately.
+     * Does NOT read config or cache — safe for debugging first-run issues. */
+    if (argc >= 2 && _stricmp(argv[1], "--log") == 0) {
+        if (log_set_flag() == 0)
+            fprintf(stderr, "Logging enabled. The next command will write to %%TEMP%%\\jump_YYYYMMDD_HHMMSS.log\n");
+        else
+            fprintf(stderr, "Failed to enable logging.\n");
+        return J_EXIT_OK;
+    }
+
+    /* Initialize logging (checks for flag file from a prior --log call) */
+    log_init();
+
+    /* Log the full command line */
+    if (log_enabled()) {
+        char cmdline[4096] = {0};
+        int i;
+        size_t cpos = 0;
+        for (i = 0; i < argc && cpos < sizeof(cmdline) - 1; i++) {
+            if (i > 0 && cpos < sizeof(cmdline) - 1) cmdline[cpos++] = ' ';
+            cpos += snprintf(cmdline + cpos, sizeof(cmdline) - cpos, "%s", argv[i]);
+        }
+        log_write("JMP01", "Command line: %s", cmdline);
+        log_write("JMP02", "Jump v%s, argc=%d", JUMP_VERSION, argc);
+    }
 
     /* No arguments → help */
     if (argc < 2) {
+        log_write("JMP03", "No arguments, printing usage");
         print_usage();
-        return J_EXIT_OK;
+        exit_code = J_EXIT_OK;
+        goto done;
     }
 
     /* --osd mode */
     if (_stricmp(argv[1], "--osd") == 0) {
+        log_write("JMP04", "OSD mode requested");
         if (argc >= 3) {
             OsdIcon icon = OSD_ICON_CD;
             if (argc >= 4) {
                 if (_stricmp(argv[3], "open") == 0) icon = OSD_ICON_OPEN;
                 else if (_stricmp(argv[3], "exec") == 0) icon = OSD_ICON_EXEC;
             }
+            log_write("JMP05", "Showing OSD: text='%s'", argv[2]);
             osd_show(argv[2], icon);
         }
-        return J_EXIT_OK;
+        exit_code = J_EXIT_OK;
+        goto done;
     }
 
     /* --install mode */
     if (_stricmp(argv[1], "--install") == 0) {
         const char *panel = NULL;
         int i;
+        log_write("JMP06", "Install mode requested");
         for (i = 2; i < argc; i++) {
             if (_strnicmp(argv[i], "--tc-panel=", 11) == 0) {
                 panel = argv[i] + 11;
             }
         }
-        return jump_install(panel);
+        log_write("JMP07", "Calling jump_install(panel=%s)", panel ? panel : "NULL");
+        exit_code = jump_install(panel);
+        log_write("JMP08", "jump_install returned %d", exit_code);
+        goto done;
     }
 
     /* --uninstall mode */
     if (_stricmp(argv[1], "--uninstall") == 0) {
-        return jump_uninstall();
+        log_write("JMP09", "Uninstall mode requested");
+        exit_code = jump_uninstall();
+        log_write("JMP10", "jump_uninstall returned %d", exit_code);
+        goto done;
     }
 
     /* --list mode */
     if (_stricmp(argv[1], "--list") == 0) {
         JumpConfig *cfg = (JumpConfig *)calloc(1, sizeof(JumpConfig));
         int rc;
-        if (!cfg) return J_EXIT_RUNTIME_ERROR;
+        log_write("JMP11", "List mode requested");
+        if (!cfg) {
+            log_write("JMP12", "Failed to allocate JumpConfig for --list");
+            exit_code = J_EXIT_RUNTIME_ERROR;
+            goto done;
+        }
         rc = config_load(cfg);
-        if (rc != 0) { free(cfg); return rc; }
+        if (rc != 0) {
+            log_write("JMP13", "config_load failed with %d in --list mode", rc);
+            free(cfg);
+            exit_code = rc;
+            goto done;
+        }
+        log_write("JMP14", "Listing %d shortcuts", cfg->shortcut_count);
         print_list(cfg);
         free(cfg);
-        return J_EXIT_OK;
+        exit_code = J_EXIT_OK;
+        goto done;
     }
 
     /* --version mode */
     if (_stricmp(argv[1], "--version") == 0) {
+        log_write("JMP15", "Version mode: v%s", JUMP_VERSION);
         fprintf(stderr, "Jump v%s\n", JUMP_VERSION);
-        return J_EXIT_OK;
+        exit_code = J_EXIT_OK;
+        goto done;
     }
 
     /* --update mode */
     if (_stricmp(argv[1], "--update") == 0) {
-        return jump_update();
+        log_write("JMP16", "Update mode requested");
+        exit_code = jump_update();
+        log_write("JMP17", "jump_update returned %d", exit_code);
+        goto done;
     }
 
     /* Normal mode: resolve alias */
@@ -380,9 +463,21 @@ int jump_main(int argc, char *argv[]) {
         int rc;
         int alias_words;
 
-        if (!cfg) return J_EXIT_RUNTIME_ERROR;
+        if (!cfg) {
+            log_write("JMP18", "Failed to allocate JumpConfig");
+            exit_code = J_EXIT_RUNTIME_ERROR;
+            goto done;
+        }
+        log_write("JMP19", "Loading configuration");
         rc = config_load(cfg);
-        if (rc != 0) { free(cfg); return rc; }
+        if (rc != 0) {
+            log_write("JMP20", "config_load failed with %d", rc);
+            free(cfg);
+            exit_code = rc;
+            goto done;
+        }
+        log_write("JMP21", "Config loaded: %d shortcuts, %d constants",
+                  cfg->shortcut_count, cfg->constant_count);
 
         /* Try multi-word aliases: longest match first.
          * For "j my project file.txt", tries:
@@ -411,11 +506,17 @@ int jump_main(int argc, char *argv[]) {
 
             param_start = 1 + alias_words;
             param_count = argc - param_start;
+            log_write("JMP22", "Trying alias '%s' (words=%d, params=%d)",
+                      multi_alias, alias_words, param_count);
             rc = resolve_alias(cfg, multi_alias,
                                param_count,
                                (const char **)(param_count > 0 ? &argv[param_start] : NULL),
                                &result);
-            if (rc == 0) break;
+            if (rc == 0) {
+                log_write("JMP23", "Alias '%s' resolved: type=%d, target='%s'",
+                          multi_alias, result.type, result.expanded_target);
+                break;
+            }
         }
 
         if (rc == J_EXIT_NOT_FOUND) {
@@ -424,11 +525,13 @@ int jump_main(int argc, char *argv[]) {
             char error_buf[2048];
             int pos = 0;
 
+            log_write("JMP24", "Alias '%s' not found", argv[1]);
             pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
                             "Unknown alias '%s'\n", argv[1]);
             count = suggest_aliases(cfg, argv[1], suggestions, MAX_SUGGESTIONS);
             if (count > 0) {
                 int s;
+                log_write("JMP25", "Found %d suggestions", count);
                 pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
                                 "Did you mean:\n");
                 for (s = 0; s < count; s++) {
@@ -444,12 +547,30 @@ int jump_main(int argc, char *argv[]) {
             error_report("%s", error_buf);
             write_temp_cmd("@rem\n");
             free(cfg);
-            return J_EXIT_NOT_FOUND;
+            exit_code = J_EXIT_NOT_FOUND;
+            goto done;
         }
 
+        log_write("JMP26", "Performing action for label='%s'", result.label);
         perform_action(&result);
         spawn_osd(result.label, result.type);
         free(cfg);
-        return J_EXIT_OK;
+        exit_code = J_EXIT_OK;
+        goto done;
     }
+
+done:
+    log_write("JMP99", "Exiting with code %d", exit_code);
+    if (log_enabled()) {
+        const wchar_t *log_path = log_get_path();
+        if (log_path) {
+            char log_path_a[MAX_PATH];
+            WideCharToMultiByte(CP_ACP, 0, log_path, -1,
+                                log_path_a, MAX_PATH, NULL, NULL);
+            fprintf(stderr, "Log written to: %s\n", log_path_a);
+            spawn_osd(log_path_a, SHORTCUT_CD);
+        }
+    }
+    log_close();
+    return exit_code;
 }

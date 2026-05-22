@@ -4,6 +4,7 @@
  * for EXEC-type shortcuts. */
 #include "resolver.h"
 #include "config.h"
+#include "log.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +14,8 @@ int resolve_alias(const JumpConfig *cfg, const char *alias,
                   ResolveResult *result) {
     memset(result, 0, sizeof(*result));
 
+    log_write("RES01", "resolve_alias: looking up '%s' (params=%d)", alias, param_count);
+
     /* Search for matching alias (case-insensitive) */
     const Shortcut *match = NULL;
     for (int i = 0; i < cfg->shortcut_count; i++) {
@@ -20,14 +23,18 @@ int resolve_alias(const JumpConfig *cfg, const char *alias,
         for (int a = 0; a < sc->alias_count; a++) {
             if (_stricmp(sc->aliases[a], alias) == 0) {
                 match = sc;
+                log_write("RES02", "resolve_alias: matched shortcut %d, alias '%s'",
+                          i, sc->aliases[a]);
                 break;
             }
         }
         if (match) break;
     }
 
-    if (!match)
+    if (!match) {
+        log_write("RES03", "resolve_alias: no match for '%s'", alias);
         return J_EXIT_NOT_FOUND;
+    }
 
     /* Populate result */
     result->type = match->type;
@@ -37,6 +44,8 @@ int resolve_alias(const JumpConfig *cfg, const char *alias,
 
     /* Expand constants/env vars in target */
     config_expand(cfg, match->target, result->expanded_target, MAX_PATH_LEN);
+    log_write("RES04", "resolve_alias: raw target='%s', expanded='%s'",
+              match->target, result->expanded_target);
 
     /* For EXEC: substitute {1},{2},... and append remaining params */
     if (match->type == SHORTCUT_EXEC && param_count > 0 && params) {
@@ -119,5 +128,6 @@ int resolve_alias(const JumpConfig *cfg, const char *alias,
         }
     }
 
+    log_write("RES05", "resolve_alias: final target='%s'", result->expanded_target);
     return 0;
 }

@@ -40,6 +40,7 @@ Write-Host "--- Running coverage ---"
     --excluded_sources main_win.c `
     --excluded_sources jump.c `
     --excluded_sources install.c `
+    --excluded_sources log.c `
     --export_type cobertura:coverage.xml `
     -- $TestExe
 

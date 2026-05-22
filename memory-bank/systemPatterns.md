@@ -27,6 +27,7 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 | `platform/osd.c` | Win32 transparent overlay window |
 | `platform/tc.c` | Total Commander detection, command building, navigation |
 | `platform/install.c` | Shell integration setup/teardown for CMD, PowerShell, PATH |
+| `platform/log.c` | One-shot diagnostic logging to `%TEMP%\\jump.log` with tagged IDs |
 
 ## Key Data Structures (types.h)
 

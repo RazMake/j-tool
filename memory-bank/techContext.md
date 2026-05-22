@@ -23,6 +23,12 @@
 - `user32` (window management, OSD)
 - `gdi32` (text rendering for OSD)
 
+## Diagnostic Logging
+- `jc --log` creates `%TEMP%\jump_log.flag` (one-shot flag)
+- Next invocation detects flag, writes to `%TEMP%\jump.log`, then deletes flag
+- `--log` does NOT read config/cache — safe for debugging bootstrap issues
+- Log IDs: `JMP`=jump.c, `CFG`=config.c, `CAC`=cache.c, `RES`=resolver.c, `TC_`=tc.c, `LOG`=log.c
+
 ## Test Framework
 - **cmocka** 1.1.7 (fetched via FetchContent, static linking)
 - Test binary: `j_tests.exe`
