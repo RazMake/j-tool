@@ -356,6 +356,42 @@ static void test_config_load_multi_word_alias(void **state) {
     DeleteFileW(tmp_path);
 }
 
+static void test_config_load_empty_file(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_empty.ini", _TRUNCATE);
+
+    /* Create an empty file */
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(J_EXIT_CONFIG_ERROR, config_load(cfg));
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
+static void test_config_load_too_many_aliases(void **state) {
+    (void)state;
+    SetEnvironmentVariableA("JUMPS", FIXTURES_DIR "/too_many_aliases.ini");
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    /* Should succeed but only keep MAX_ALIASES_PER_SHORTCUT aliases */
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_true(cfg->shortcuts[0].alias_count <= MAX_ALIASES_PER_SHORTCUT);
+    free(cfg);
+}
+
 int run_config_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_config_expand_passthrough),
@@ -386,6 +422,10 @@ int run_config_tests(void) {
         cmocka_unit_test_setup_teardown(test_config_load_cache_hit,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_multi_word_alias,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_empty_file,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_too_many_aliases,
             config_load_setup, config_load_teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

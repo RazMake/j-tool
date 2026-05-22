@@ -239,6 +239,97 @@ static void test_cache_is_fresh_missing_source(void **state) {
     DeleteFileW(tmp);
 }
 
+static void test_cache_load_null_config(void **state) {
+    (void)state;
+    assert_int_equal(-1, cache_load(L"C:\\some.cache", NULL));
+}
+
+static void test_cache_load_truncated(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    char buf[] = "too short";
+    DWORD written;
+    HANDLE hFile;
+    make_temp_path(tmp, MAX_PATH, L"jtest_trunc_load.cache");
+
+    hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+    WriteFile(hFile, buf, sizeof(buf), &written, NULL);
+    CloseHandle(hFile);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(-1, cache_load(tmp, cfg));
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
+static void test_cache_load_truncated_shortcuts(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_trunc_sc.cache");
+
+    /* Write a valid header claiming 1 shortcut, but no shortcut data */
+    HANDLE hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+    CacheHeader hdr = {0};
+    hdr.magic = CACHE_MAGIC;
+    hdr.version = CACHE_VERSION;
+    hdr.shortcut_count = 1;
+    hdr.constant_count = 0;
+    DWORD written;
+    WriteFile(hFile, &hdr, sizeof(hdr), &written, NULL);
+    CloseHandle(hFile);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(-1, cache_load(tmp, cfg));
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
+static void test_cache_load_truncated_constants(void **state) {
+    (void)state;
+    wchar_t tmp[MAX_PATH];
+    make_temp_path(tmp, MAX_PATH, L"jtest_trunc_ct.cache");
+
+    /* Write valid header + full shortcuts, but truncated constants */
+    JumpConfig *cfg_out = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg_out);
+    cfg_out->shortcut_count = 1;
+    strcpy_s(cfg_out->shortcuts[0].aliases[0], MAX_ALIAS_LEN, "x");
+    cfg_out->shortcuts[0].alias_count = 1;
+    cfg_out->shortcuts[0].type = SHORTCUT_CD;
+
+    /* First, save a valid cache with 1 shortcut + 0 constants */
+    CacheSourceFile sf = {0};
+    assert_int_equal(0, cache_save(tmp, cfg_out, &sf, 0));
+
+    /* Now re-write just the header with constant_count=1 (but no constant data) */
+    HANDLE hFile = CreateFileW(tmp, GENERIC_WRITE, 0, NULL,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(hFile != INVALID_HANDLE_VALUE);
+
+    CacheHeader hdr = {0};
+    hdr.magic = CACHE_MAGIC;
+    hdr.version = CACHE_VERSION;
+    hdr.shortcut_count = 1;
+    hdr.constant_count = 1; /* claims 1 constant but data won't be there */
+    DWORD written;
+    WriteFile(hFile, &hdr, sizeof(hdr), &written, NULL);
+    CloseHandle(hFile);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(-1, cache_load(tmp, cfg));
+
+    free(cfg_out);
+    free(cfg);
+    DeleteFileW(tmp);
+}
+
 static void test_cache_is_fresh_stale(void **state) {
     (void)state;
     wchar_t tmp[MAX_PATH];
@@ -284,6 +375,10 @@ int run_cache_tests(void) {
         cmocka_unit_test(test_cache_save_bad_source_count),
         cmocka_unit_test(test_cache_save_invalid_path),
         cmocka_unit_test(test_cache_load_bad_counts),
+        cmocka_unit_test(test_cache_load_null_config),
+        cmocka_unit_test(test_cache_load_truncated),
+        cmocka_unit_test(test_cache_load_truncated_shortcuts),
+        cmocka_unit_test(test_cache_load_truncated_constants),
         cmocka_unit_test(test_cache_is_fresh_bad_magic),
         cmocka_unit_test(test_cache_is_fresh_truncated),
         cmocka_unit_test(test_cache_is_fresh_missing_source),

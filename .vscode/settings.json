@@ -19,6 +19,10 @@
             "approve": true,
             "matchCommandLine": true
         },
-        ".\\build_env.ps1": true
+        ".\\build_env.ps1": true,
+        "/^cd \"c:\\\\Data\\\\My Code\\\\Jump\"; \\.\\\\check_coverage\\.ps1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
