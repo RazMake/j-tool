@@ -7,7 +7,8 @@
 #include <string.h>
 #include <stdio.h>
 
-int tc_find_path(char *tc_path, size_t tc_path_size) {
+/* Try to read TC install dir from a single registry hive+key. */
+static int tc_find_path_in_hive(HKEY root, char *tc_path, size_t tc_path_size) {
     HKEY hkey;
     LONG rc;
     char install_dir[MAX_PATH];
@@ -15,7 +16,7 @@ int tc_find_path(char *tc_path, size_t tc_path_size) {
     DWORD type;
     char full_path[MAX_PATH];
 
-    rc = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+    rc = RegOpenKeyExA(root,
                        "Software\\Ghisler\\Total Commander",
                        0, KEY_READ | KEY_WOW64_64KEY, &hkey);
     if (rc != ERROR_SUCCESS)
@@ -52,6 +53,13 @@ int tc_find_path(char *tc_path, size_t tc_path_size) {
     return -1;
 }
 
+int tc_find_path(char *tc_path, size_t tc_path_size) {
+    /* Try machine-wide install first (HKLM), then per-user (HKCU) */
+    if (tc_find_path_in_hive(HKEY_LOCAL_MACHINE, tc_path, tc_path_size) == 0)
+        return 0;
+    return tc_find_path_in_hive(HKEY_CURRENT_USER, tc_path, tc_path_size);
+}
+
 int tc_build_cd_command(const char *tc_path, const char *panel,
                         const char *directory, char *cmd_buf, size_t cmd_size) {
     const char *side = (panel[0] == 'R') ? "/R=" : "/L=";
@@ -72,7 +80,9 @@ int tc_navigate(const char *directory) {
     if (!FindWindowA("TTOTAL_CMD", NULL))
         return -1;
 
-    if (tc_find_path(tc_path, sizeof(tc_path)) != 0)
+    /* Try registry first, then fall back to ancestor process path */
+    if (tc_find_path(tc_path, sizeof(tc_path)) != 0 &&
+        tc_find_ancestor_path(tc_path, sizeof(tc_path)) != 0)
         return -1;
 
     /* Navigate the source (active) panel */
@@ -113,7 +123,7 @@ static DWORD get_parent_pid(DWORD pid) {
     return 0;
 }
 
-int tc_is_ancestor(void) {
+int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
     DWORD pid = GetCurrentProcessId();
     int i;
 
@@ -124,14 +134,14 @@ int tc_is_ancestor(void) {
         char *base;
 
         pid = get_parent_pid(pid);
-        if (pid == 0) return 0;
+        if (pid == 0) return -1;
 
         proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (!proc) return 0;
+        if (!proc) continue;
 
         if (!QueryFullProcessImageNameA(proc, 0, name, &name_size)) {
             CloseHandle(proc);
-            return 0;
+            continue;
         }
         CloseHandle(proc);
 
@@ -139,8 +149,16 @@ int tc_is_ancestor(void) {
         base = base ? base + 1 : name;
         if (_stricmp(base, "TOTALCMD64.EXE") == 0 ||
             _stricmp(base, "TOTALCMD.EXE") == 0) {
-            return 1;
+            if (strlen(name) + 1 > tc_path_size)
+                return -1;
+            strncpy_s(tc_path, tc_path_size, name, _TRUNCATE);
+            return 0;
         }
     }
-    return 0;
+    return -1;
+}
+
+int tc_is_ancestor(void) {
+    char tc_path[MAX_PATH];
+    return tc_find_ancestor_path(tc_path, sizeof(tc_path)) == 0 ? 1 : 0;
 }

@@ -70,6 +70,13 @@ static void test_tc_is_ancestor_not_tc(void **state) {
     assert_int_equal(0, tc_is_ancestor());
 }
 
+static void test_tc_find_ancestor_path_not_tc(void **state) {
+    (void)state;
+    char buf[512];
+    /* Not launched from TC → should return -1 */
+    assert_int_equal(-1, tc_find_ancestor_path(buf, sizeof(buf)));
+}
+
 int run_tc_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_tc_build_cd_command_left),
@@ -79,6 +86,7 @@ int run_tc_tests(void) {
         cmocka_unit_test(test_tc_find_path_no_crash),
         cmocka_unit_test(test_tc_find_path_small_buffer),
         cmocka_unit_test(test_tc_is_ancestor_not_tc),
+        cmocka_unit_test(test_tc_find_ancestor_path_not_tc),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

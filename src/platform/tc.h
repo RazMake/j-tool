@@ -7,12 +7,20 @@
 
 /*
  * Find Total Commander executable path from registry.
- * Reads HKLM\Software\Ghisler\Total Commander for the InstallDir,
- * then appends TOTALCMD64.EXE (or TOTALCMD.EXE).
+ * Checks HKLM\Software\Ghisler\Total Commander first, then HKCU,
+ * and appends TOTALCMD64.EXE (or TOTALCMD.EXE).
  *
  * Returns 0 on success (tc_path filled), non-zero if TC not found.
  */
 int tc_find_path(char *tc_path, size_t tc_path_size);
+
+/*
+ * Find Total Commander executable path by walking the ancestor process tree.
+ * Useful as a fallback when TC is not in the registry (portable installs).
+ *
+ * Returns 0 on success (tc_path filled), -1 if TC not found in ancestors.
+ */
+int tc_find_ancestor_path(char *tc_path, size_t tc_path_size);
 
 /*
  * Build a Total Commander command line to change directory.
