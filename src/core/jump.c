@@ -225,8 +225,10 @@ int exec_needs_vbs_wrapper(const char *cmd_line) {
     return (_stricmp(ext, ".vbs") == 0);
 }
 
-/* Execute the resolved shortcut action (CD, OPEN, or EXEC) */
-static void perform_action(const ResolveResult *result) {
+/* Execute the resolved shortcut action (CD, OPEN, or EXEC).
+ * Returns the child process handle for visible EXEC shortcuts
+ * (caller must wait and close it), or NULL otherwise. */
+static HANDLE perform_action(const ResolveResult *result) {
     log_write("JMP30", "perform_action: type=%d, target='%s'",
               result->type, result->expanded_target);
     switch (result->type) {
@@ -269,6 +271,10 @@ static void perform_action(const ResolveResult *result) {
         char cmd_copy[MAX_PATH_LEN];
         const char *target = result->expanded_target;
         DWORD creation_flags = 0;
+        HANDLE hConIn = INVALID_HANDLE_VALUE;
+        HANDLE hConOut = INVALID_HANDLE_VALUE;
+        BOOL inherit_handles = FALSE;
+        HANDLE child_proc = NULL;
 
         /* .cmd/.bat files cannot be launched directly by CreateProcessA;
          * they must be run through cmd.exe /c */
@@ -306,24 +312,50 @@ static void perform_action(const ResolveResult *result) {
             si.dwFlags = STARTF_USESHOWWINDOW;
             si.wShowWindow = SW_HIDE;
             creation_flags |= CREATE_NO_WINDOW;
+        } else {
+            /* Open real console handles so the child gets proper
+             * stdin/stdout even when ours are redirected (e.g. by
+             * the for/f wrapper or PowerShell output capture). */
+            SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, TRUE};
+            hConIn = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE,
+                                 FILE_SHARE_READ, &sa,
+                                 OPEN_EXISTING, 0, NULL);
+            hConOut = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE,
+                                  FILE_SHARE_WRITE, &sa,
+                                  OPEN_EXISTING, 0, NULL);
+            if (hConIn != INVALID_HANDLE_VALUE &&
+                hConOut != INVALID_HANDLE_VALUE) {
+                si.dwFlags |= STARTF_USESTDHANDLES;
+                si.hStdInput  = hConIn;
+                si.hStdOutput = hConOut;
+                si.hStdError  = hConOut;
+                inherit_handles = TRUE;
+                log_write("JMP39b", "EXEC: passing console handles to child");
+            }
         }
 
-        if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
+        if (CreateProcessA(NULL, cmd_copy, NULL, NULL, inherit_handles,
                            creation_flags, NULL, NULL, &si, &pi)) {
             log_write("JMP40", "EXEC: CreateProcess succeeded");
             CloseHandle(pi.hThread);
-            CloseHandle(pi.hProcess);
+            if (!result->hide_console)
+                child_proc = pi.hProcess;
+            else
+                CloseHandle(pi.hProcess);
         } else if (exec_needs_ps_wrapper(target)) {
             log_write("JMP41", "EXEC: pwsh failed (err=%lu), falling back to powershell.exe",
                       GetLastError());
             /* pwsh not found, fall back to powershell.exe */
             sprintf_s(cmd_copy, sizeof(cmd_copy),
                       "powershell -NoProfile -ExecutionPolicy Bypass -File %s", target);
-            if (CreateProcessA(NULL, cmd_copy, NULL, NULL, FALSE,
+            if (CreateProcessA(NULL, cmd_copy, NULL, NULL, inherit_handles,
                                creation_flags, NULL, NULL, &si, &pi)) {
                 log_write("JMP42", "EXEC: powershell.exe fallback succeeded");
                 CloseHandle(pi.hThread);
-                CloseHandle(pi.hProcess);
+                if (!result->hide_console)
+                    child_proc = pi.hProcess;
+                else
+                    CloseHandle(pi.hProcess);
             } else {
                 log_write("JMP43", "EXEC: powershell.exe fallback also failed (err=%lu)",
                           GetLastError());
@@ -331,10 +363,17 @@ static void perform_action(const ResolveResult *result) {
         } else {
             log_write("JMP44", "EXEC: CreateProcess failed (err=%lu)", GetLastError());
         }
+
+        /* Close our copies of the console handles; child has its own */
+        if (hConIn != INVALID_HANDLE_VALUE) CloseHandle(hConIn);
+        if (hConOut != INVALID_HANDLE_VALUE) CloseHandle(hConOut);
+
         write_temp_cmd("@rem\n");
+        if (child_proc) return child_proc;
         break;
     }
     }
+    return NULL;
 }
 
 int jump_main(int argc, char *argv[]) {
@@ -552,8 +591,15 @@ int jump_main(int argc, char *argv[]) {
         }
 
         log_write("JMP26", "Performing action for label='%s'", result.label);
-        perform_action(&result);
-        spawn_osd(result.label, result.type);
+        {
+            HANDLE exec_proc = perform_action(&result);
+            spawn_osd(result.label, result.type);
+            if (exec_proc) {
+                log_write("JMP27", "Waiting for EXEC child process");
+                WaitForSingleObject(exec_proc, INFINITE);
+                CloseHandle(exec_proc);
+            }
+        }
         free(cfg);
         exit_code = J_EXIT_OK;
         goto done;
@@ -569,6 +615,20 @@ done:
                                 log_path_a, MAX_PATH, NULL, NULL);
             fprintf(stderr, "Log written to: %s\n", log_path_a);
             spawn_osd(log_path_a, SHORTCUT_CD);
+
+            /* Copy log file path to clipboard */
+            if (OpenClipboard(NULL)) {
+                size_t len = strlen(log_path_a);
+                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+                if (hMem) {
+                    char *p = (char *)GlobalLock(hMem);
+                    memcpy(p, log_path_a, len + 1);
+                    GlobalUnlock(hMem);
+                    EmptyClipboard();
+                    SetClipboardData(CF_TEXT, hMem);
+                }
+                CloseClipboard();
+            }
         }
     }
     log_close();

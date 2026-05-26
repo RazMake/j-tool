@@ -116,9 +116,13 @@ static void test_config_validate_dup_alias(void **state) {
     strcpy_s(cfg.shortcuts[0].aliases[0], MAX_ALIAS_LEN, "dup");
     strcpy_s(cfg.shortcuts[0].aliases[1], MAX_ALIAS_LEN, "a");
     cfg.shortcuts[0].alias_count = 2;
+    strcpy_s(cfg.shortcuts[0].source_file, MAX_LABEL_LEN, "work.ini");
+    strcpy_s(cfg.shortcuts[0].source_section, MAX_LABEL_LEN, "Project A");
     strcpy_s(cfg.shortcuts[1].aliases[0], MAX_ALIAS_LEN, "DUP");
     strcpy_s(cfg.shortcuts[1].aliases[1], MAX_ALIAS_LEN, "b");
     cfg.shortcuts[1].alias_count = 2;
+    strcpy_s(cfg.shortcuts[1].source_file, MAX_LABEL_LEN, "personal.ini");
+    strcpy_s(cfg.shortcuts[1].source_section, MAX_LABEL_LEN, "Project B");
     cfg.shortcut_count = 2;
 
     assert_int_equal(J_EXIT_CONFIG_ERROR, config_validate(&cfg));
@@ -392,6 +396,181 @@ static void test_config_load_too_many_aliases(void **state) {
     free(cfg);
 }
 
+/* ── config_expand edge-case tests ────────────────────────────────────── */
+
+static void test_config_expand_env_unset(void **state) {
+    (void)state;
+    JumpConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    /* Use a variable name that should not exist */
+    SetEnvironmentVariableA("JTEST_UNSET_VAR", NULL);
+
+    char buf[256];
+    assert_int_equal(0, config_expand(&cfg, "prefix{{ENV:JTEST_UNSET_VAR}}suffix",
+                                      buf, sizeof(buf)));
+    /* Unset env var expands to empty string */
+    assert_string_equal("prefixsuffix", buf);
+}
+
+static void test_config_expand_unclosed_brace(void **state) {
+    (void)state;
+    JumpConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    char buf[256];
+    /* {{without closing should pass through as literal */
+    assert_int_equal(0, config_expand(&cfg, "hello {{world", buf, sizeof(buf)));
+    assert_string_equal("hello {{world", buf);
+}
+
+static void test_config_expand_env_buffer_too_small(void **state) {
+    (void)state;
+    JumpConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    /* Set a long env var value */
+    SetEnvironmentVariableA("JTEST_LONGVAL", "abcdefghijklmnopqrstuvwxyz");
+
+    char buf[10]; /* too small for the expansion */
+    assert_int_not_equal(0, config_expand(&cfg, "{{ENV:JTEST_LONGVAL}}", buf, sizeof(buf)));
+
+    SetEnvironmentVariableA("JTEST_LONGVAL", NULL);
+}
+
+static void test_config_expand_literal_buffer_overflow(void **state) {
+    (void)state;
+    JumpConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    /* Fill a string longer than the buffer with literal chars */
+    char buf[5];
+    assert_int_not_equal(0, config_expand(&cfg, "abcdefghij", buf, sizeof(buf)));
+}
+
+/* ── config_load: include with constant expansion ─────────────────────── */
+
+static void test_config_load_include_with_constants(void **state) {
+    (void)state;
+    SetEnvironmentVariableA("JUMPS",
+        FIXTURES_DIR "/valid_root_with_constants.ini");
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    int rc = config_load(cfg);
+    assert_int_equal(0, rc);
+    /* The included file should provide 1 shortcut */
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_string_equal("C:\\ExtraProject", cfg->shortcuts[0].target);
+    free(cfg);
+}
+
+/* ── config_load: HideConsole and exec type ───────────────────────────── */
+
+static void test_config_load_exec_hide_console(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_hideconsole.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[MyScript]\n"
+        "Jumps=myscript,ms\n"
+        "Execute=C:\\Tools\\script.exe\n"
+        "HideConsole=true\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_int_equal(SHORTCUT_EXEC, cfg->shortcuts[0].type);
+    assert_int_equal(1, cfg->shortcuts[0].hide_console);
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
+/* ── config_load: section name as label fallback ──────────────────────── */
+
+static void test_config_load_no_label_uses_section_name(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_nolabel.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[My Section Name]\n"
+        "Jumps=msn\n"
+        "Path=C:\\Somewhere\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+    /* Label should be the section name when no Label= key is provided */
+    assert_string_equal("My Section Name", cfg->shortcuts[0].label);
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
+/* ── config_load: OPEN shortcut type ──────────────────────────────────── */
+
+static void test_config_load_open_shortcut(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_openshortcut.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[WebSearch]\n"
+        "Label=Google\n"
+        "Jumps=google,gs\n"
+        "Open=https://www.google.com\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_int_equal(SHORTCUT_OPEN, cfg->shortcuts[0].type);
+    assert_string_equal("https://www.google.com", cfg->shortcuts[0].target);
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
 int run_config_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_config_expand_passthrough),
@@ -426,6 +605,18 @@ int run_config_tests(void) {
         cmocka_unit_test_setup_teardown(test_config_load_empty_file,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_too_many_aliases,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test(test_config_expand_env_unset),
+        cmocka_unit_test(test_config_expand_unclosed_brace),
+        cmocka_unit_test(test_config_expand_env_buffer_too_small),
+        cmocka_unit_test(test_config_expand_literal_buffer_overflow),
+        cmocka_unit_test_setup_teardown(test_config_load_include_with_constants,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_exec_hide_console,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_no_label_uses_section_name,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_open_shortcut,
             config_load_setup, config_load_teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

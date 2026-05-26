@@ -143,7 +143,8 @@ static int merge_constants(JumpConfig *cfg, const IniFile *ini) {
 }
 
 /* Extract shortcuts from an IniFile into cfg. */
-static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini) {
+static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini,
+                             const char *source_file) {
     int s;
     for (s = 0; s < ini->section_count; s++) {
         const IniSection *sec = &ini->sections[s];
@@ -171,6 +172,9 @@ static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini) {
 
         sc = &cfg->shortcuts[cfg->shortcut_count];
         memset(sc, 0, sizeof(Shortcut));
+
+        strncpy_s(sc->source_file, MAX_LABEL_LEN, source_file, _TRUNCATE);
+        strncpy_s(sc->source_section, MAX_LABEL_LEN, sec->name, _TRUNCATE);
 
         label_val = ini_find_value(sec, "Label");
         if (label_val)
@@ -290,8 +294,15 @@ int config_validate(const JumpConfig *cfg) {
                 for (m = start; m < cfg->shortcuts[j].alias_count; m++) {
                     if (str_icmp(cfg->shortcuts[i].aliases[k],
                                  cfg->shortcuts[j].aliases[m]) == 0) {
-                        error_report("Duplicate alias '%s'\n",
-                                cfg->shortcuts[i].aliases[k]);
+                        error_report(
+                                "Duplicate alias '%s'\n"
+                                "  [%s] in %s\n"
+                                "  [%s] in %s\n",
+                                cfg->shortcuts[i].aliases[k],
+                                cfg->shortcuts[i].source_section,
+                                cfg->shortcuts[i].source_file,
+                                cfg->shortcuts[j].source_section,
+                                cfg->shortcuts[j].source_file);
                         return J_EXIT_CONFIG_ERROR;
                     }
                 }
@@ -421,20 +432,42 @@ int config_load(JumpConfig *cfg) {
         log_write("CFG18", "Processing [Include] section: %d entries",
                   inc_sec->entry_count);
         for (i = 0; i < inc_sec->entry_count; i++) {
-            const char *inc_file = inc_sec->entries[i].value;
+            const char *inc_file_raw = inc_sec->entries[i].value;
+            char inc_file_expanded[MAX_PATH_LEN];
+            const char *inc_file;
             wchar_t inc_path[MAX_PATH];
             wchar_t inc_file_w[MAX_PATH];
             IniFile *inc_ini;
 
+            /* Expand constants (e.g. {{KBROOT}}) in include paths */
+            if (config_expand(cfg, inc_file_raw, inc_file_expanded,
+                              sizeof(inc_file_expanded)) == 0) {
+                inc_file = inc_file_expanded;
+            } else {
+                inc_file = inc_file_raw;
+            }
+
             log_write("CFG19", "Including file: '%s'", inc_file);
             MultiByteToWideChar(CP_UTF8, 0, inc_file, -1,
                                 inc_file_w, MAX_PATH);
-            _snwprintf_s(inc_path, MAX_PATH, _TRUNCATE, L"%s\\%s",
-                         root_dir, inc_file_w);
+
+            /* If the expanded path is absolute, use it directly;
+               otherwise resolve it relative to the root INI directory. */
+            if ((inc_file_w[0] && inc_file_w[1] == L':') ||
+                (inc_file_w[0] == L'\\' && inc_file_w[1] == L'\\')) {
+                wcsncpy_s(inc_path, MAX_PATH, inc_file_w, _TRUNCATE);
+            } else {
+                _snwprintf_s(inc_path, MAX_PATH, _TRUNCATE, L"%s\\%s",
+                             root_dir, inc_file_w);
+            }
 
             raw_len = read_file_bytes(inc_path, &raw);
             if (raw_len == 0) {
-                log_write("CFG20", "Cannot read include file '%s'", inc_file);
+                char inc_path_a[MAX_PATH];
+                WideCharToMultiByte(CP_ACP, 0, inc_path, -1,
+                                    inc_path_a, MAX_PATH, NULL, NULL);
+                log_write("CFG20", "Cannot read include file '%s' (resolved='%s', err=%lu)",
+                          inc_file, inc_path_a, GetLastError());
                 error_report("Cannot read include file '%s'\n",
                         inc_file);
                 free(ini);
@@ -478,7 +511,7 @@ int config_load(JumpConfig *cfg) {
             }
 
             /* 9. Extract shortcuts from included file */
-            if (extract_shortcuts(cfg, inc_ini) != 0) {
+            if (extract_shortcuts(cfg, inc_ini, inc_file) != 0) {
                 log_write("CFG27", "extract_shortcuts failed for '%s'", inc_file);
                 free(inc_ini); free(ini);
                 return J_EXIT_CONFIG_ERROR;
@@ -504,7 +537,7 @@ int config_load(JumpConfig *cfg) {
     }
 
     /* 9 cont. Extract shortcuts from root file */
-    if (extract_shortcuts(cfg, ini) != 0) {
+    if (extract_shortcuts(cfg, ini, jumps_path_a) != 0) {
         log_write("CFG30", "extract_shortcuts failed for root file");
         free(ini);
         return J_EXIT_CONFIG_ERROR;

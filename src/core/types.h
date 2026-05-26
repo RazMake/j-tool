@@ -32,6 +32,8 @@ typedef struct {
     char target[MAX_PATH_LEN];
     ShortcutType type;
     int  hide_console;   /* EXEC-only: hide console window of spawned process */
+    char source_file[MAX_LABEL_LEN];    /* INI filename this shortcut came from */
+    char source_section[MAX_LABEL_LEN]; /* INI section name */
 } Shortcut;
 
 typedef struct {

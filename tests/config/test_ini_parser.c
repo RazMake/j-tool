@@ -250,6 +250,109 @@ static void test_ini_find_null_args(void **state) {
     assert_null(ini_find_value(NULL, NULL));
 }
 
+/* 15. Very long line — should be truncated without crashing */
+static void test_ini_parse_long_line(void **state) {
+    (void)state;
+    /* Build: [S]\n + key= + 4000 chars of 'A' + \n */
+    size_t val_len = 4000;
+    size_t total = 4 + 4 + val_len + 1 + 1; /* [S]\nkey=AAAA...\n\0 */
+    char *text = calloc(1, total);
+    assert_non_null(text);
+    strcpy(text, "[S]\nkey=");
+    memset(text + 8, 'A', val_len);
+    text[8 + val_len] = '\n';
+    text[8 + val_len + 1] = '\0';
+
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(1, f->section_count);
+    assert_int_equal(1, f->sections[0].entry_count);
+    /* Value should be truncated to INI_MAX_VALUE_LEN - 1 */
+    assert_true(strlen(f->sections[0].entries[0].value) < INI_MAX_VALUE_LEN);
+    assert_true(strlen(f->sections[0].entries[0].value) > 0);
+    free(f);
+    free(text);
+}
+
+/* 16. Very long section name — should be truncated */
+static void test_ini_parse_long_section_name(void **state) {
+    (void)state;
+    /* Build: [ + 200 chars of 'X' + ]\nk=v\n */
+    char text[512];
+    text[0] = '[';
+    memset(text + 1, 'X', 200);
+    strcpy(text + 201, "]\nk=v\n");
+
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(1, f->section_count);
+    /* Name should be truncated to INI_MAX_NAME_LEN - 1 */
+    assert_true(strlen(f->sections[0].name) < INI_MAX_NAME_LEN);
+    assert_true(strlen(f->sections[0].name) > 0);
+    free(f);
+}
+
+/* 17. Very long key — should be truncated */
+static void test_ini_parse_long_key(void **state) {
+    (void)state;
+    /* Build: [S]\n + 200 chars of 'K' + =val\n */
+    char text[512];
+    strcpy(text, "[S]\n");
+    memset(text + 4, 'K', 200);
+    strcpy(text + 204, "=val\n");
+
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(1, f->section_count);
+    assert_int_equal(1, f->sections[0].entry_count);
+    /* Key should be truncated to INI_MAX_KEY_LEN - 1 */
+    assert_true(strlen(f->sections[0].entries[0].key) < INI_MAX_KEY_LEN);
+    assert_true(strlen(f->sections[0].entries[0].key) > 0);
+    assert_string_equal("val", f->sections[0].entries[0].value);
+    free(f);
+}
+
+/* 18. Very long keyless value — should be truncated */
+static void test_ini_parse_long_keyless_value(void **state) {
+    (void)state;
+    /* Build: [S]\n + 3000 chars of 'V' + \n */
+    size_t val_len = 3000;
+    size_t total = 4 + val_len + 2;
+    char *text = calloc(1, total);
+    assert_non_null(text);
+    strcpy(text, "[S]\n");
+    memset(text + 4, 'V', val_len);
+    text[4 + val_len] = '\n';
+
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(1, f->section_count);
+    assert_int_equal(1, f->sections[0].entry_count);
+    assert_string_equal("", f->sections[0].entries[0].key);
+    assert_true(strlen(f->sections[0].entries[0].value) < INI_MAX_VALUE_LEN);
+    assert_true(strlen(f->sections[0].entries[0].value) > 0);
+    free(f);
+    free(text);
+}
+
+/* 19. Carriage return handling (Windows-style \r\n) */
+static void test_ini_parse_crlf(void **state) {
+    (void)state;
+    const char *text = "[Sec]\r\nk1=v1\r\nk2=v2\r\n";
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(1, f->section_count);
+    assert_int_equal(2, f->sections[0].entry_count);
+    assert_string_equal("v1", f->sections[0].entries[0].value);
+    assert_string_equal("v2", f->sections[0].entries[1].value);
+    free(f);
+}
+
 int run_ini_parser_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ini_parse_empty),
@@ -268,6 +371,11 @@ int run_ini_parser_tests(void) {
         cmocka_unit_test(test_ini_parse_empty_section),
         cmocka_unit_test(test_ini_parse_value_with_equals),
         cmocka_unit_test(test_ini_find_null_args),
+        cmocka_unit_test(test_ini_parse_long_line),
+        cmocka_unit_test(test_ini_parse_long_section_name),
+        cmocka_unit_test(test_ini_parse_long_key),
+        cmocka_unit_test(test_ini_parse_long_keyless_value),
+        cmocka_unit_test(test_ini_parse_crlf),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
