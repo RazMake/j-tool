@@ -279,64 +279,80 @@ static int expand_constant_values(JumpConfig *cfg) {
 
 int config_expand(const JumpConfig *cfg, const char *input,
                   char *out_buf, size_t out_size) {
-    const char *p = input;
-    size_t wp = 0;  /* write position */
+    char tmp_buf[MAX_PATH_LEN];
+    const char *src = input;
+    int pass;
+    const int max_passes = 10;
 
-    while (*p) {
-        if (p[0] == '{' && p[1] == '{') {
-            const char *close = strstr(p + 2, "}}");
-            if (close) {
-                char token[MAX_PATH_LEN];
-                size_t tlen = (size_t)(close - (p + 2));
-                if (tlen >= sizeof(token)) tlen = sizeof(token) - 1;
-                memcpy(token, p + 2, tlen);
-                token[tlen] = '\0';
+    for (pass = 0; pass < max_passes; pass++) {
+        const char *p = src;
+        size_t wp = 0;  /* write position */
 
-                if (_strnicmp(token, "ENV:", 4) == 0) {
-                    /* environment variable */
-                    char env_val[MAX_PATH_LEN];
-                    DWORD r = GetEnvironmentVariableA(token + 4, env_val,
-                                                     (DWORD)sizeof(env_val));
-                    if (r == 0) {
-                        log_write("CFG40", "ENV var '%s' not set, expanding to empty", token + 4);
-                        env_val[0] = '\0';
-                    }
-                    if (wp + r >= out_size) {
-                        log_write("CFG41", "Buffer too small expanding ENV:'%s'", token + 4);
-                        return -1; /* buffer too small */
-                    }
-                    memcpy(out_buf + wp, env_val, r);
-                    wp += r;
-                } else {
-                    /* constant lookup */
-                    char upper[MAX_ALIAS_LEN];
-                    int i, found = 0;
-                    str_upper(upper, token, MAX_ALIAS_LEN);
-                    for (i = 0; i < cfg->constant_count; i++) {
-                        if (str_icmp(cfg->constants[i].name, upper) == 0) {
-                            size_t vlen = strlen(cfg->constants[i].value);
-                            if (wp + vlen >= out_size) return -1;
-                            memcpy(out_buf + wp, cfg->constants[i].value, vlen);
-                            wp += vlen;
-                            found = 1;
-                            break;
+        while (*p) {
+            if (p[0] == '{' && p[1] == '{') {
+                const char *close = strstr(p + 2, "}}");
+                if (close) {
+                    char token[MAX_PATH_LEN];
+                    size_t tlen = (size_t)(close - (p + 2));
+                    if (tlen >= sizeof(token)) tlen = sizeof(token) - 1;
+                    memcpy(token, p + 2, tlen);
+                    token[tlen] = '\0';
+
+                    if (_strnicmp(token, "ENV:", 4) == 0) {
+                        /* environment variable */
+                        char env_val[MAX_PATH_LEN];
+                        DWORD r = GetEnvironmentVariableA(token + 4, env_val,
+                                                         (DWORD)sizeof(env_val));
+                        if (r == 0) {
+                            log_write("CFG40", "ENV var '%s' not set, expanding to empty", token + 4);
+                            env_val[0] = '\0';
+                        }
+                        if (wp + r >= out_size) {
+                            log_write("CFG41", "Buffer too small expanding ENV:'%s'", token + 4);
+                            return -1; /* buffer too small */
+                        }
+                        memcpy(out_buf + wp, env_val, r);
+                        wp += r;
+                    } else {
+                        /* constant lookup */
+                        char upper[MAX_ALIAS_LEN];
+                        int i, found = 0;
+                        str_upper(upper, token, MAX_ALIAS_LEN);
+                        for (i = 0; i < cfg->constant_count; i++) {
+                            if (str_icmp(cfg->constants[i].name, upper) == 0) {
+                                size_t vlen = strlen(cfg->constants[i].value);
+                                if (wp + vlen >= out_size) return -1;
+                                memcpy(out_buf + wp, cfg->constants[i].value, vlen);
+                                wp += vlen;
+                                found = 1;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            log_write("CFG42", "Unknown constant '%s'", token);
+                            error_report("Unknown constant '%s'\n", token);
+                            return -1;
                         }
                     }
-                    if (!found) {
-                        log_write("CFG42", "Unknown constant '%s'", token);
-                        error_report("Unknown constant '%s'\n", token);
-                        return -1;
-                    }
+                    p = close + 2;
+                    continue;
                 }
-                p = close + 2;
-                continue;
             }
+            if (wp + 1 >= out_size) return -1;
+            out_buf[wp++] = *p++;
         }
-        if (wp + 1 >= out_size) return -1;
-        out_buf[wp++] = *p++;
+        if (wp >= out_size) return -1;
+        out_buf[wp] = '\0';
+
+        /* If no more {{…}} remain, we're done */
+        if (strstr(out_buf, "{{") == NULL)
+            return 0;
+
+        /* Copy result to tmp_buf for the next pass */
+        strncpy_s(tmp_buf, sizeof(tmp_buf), out_buf, _TRUNCATE);
+        src = tmp_buf;
     }
-    if (wp >= out_size) return -1;
-    out_buf[wp] = '\0';
+
     return 0;
 }
 
