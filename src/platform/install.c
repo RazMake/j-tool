@@ -13,7 +13,7 @@
 #define DOSKEY_CMD_OLD "doskey j=jc.exe $* >nul $T call %TEMP%\\jump_cd.cmd"
 
 #define WRAPPER_FILENAME "jump_j.cmd"
-#define WRAPPER_CONTENT  "@for /f \"tokens=*\" %%a in ('jc.exe %*') do @cd /d \"%%a\"\r\n"
+#define WRAPPER_CONTENT  "@jc.exe %* >nul && @call %TEMP%\\jump_cd.cmd\r\n"
 
 #define CMD_PROC_KEY "Software\\Microsoft\\Command Processor"
 #define ENV_KEY      "Environment"
