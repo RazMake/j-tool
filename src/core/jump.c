@@ -455,6 +455,24 @@ int jump_main(int argc, char *argv[]) {
         goto done;
     }
 
+    /* --version mode */
+    if (_stricmp(argv[1], "--version") == 0) {
+        log_write("JMP15", "Version mode: v%s", JUMP_VERSION);
+        fprintf(stderr, "Jump v%s\n", JUMP_VERSION);
+        exit_code = J_EXIT_OK;
+        goto done;
+    }
+
+    /* --update mode */
+    if (_stricmp(argv[1], "--update") == 0) {
+        log_write("JMP16", "Update mode requested");
+        exit_code = jump_update();
+        log_write("JMP17", "jump_update returned %d", exit_code);
+        goto done;
+    }
+
+    /* --- All modes below require configuration (INI files) --- */
+
     /* --list mode */
     if (_stricmp(argv[1], "--list") == 0) {
         JumpConfig *cfg = (JumpConfig *)calloc(1, sizeof(JumpConfig));
@@ -476,22 +494,6 @@ int jump_main(int argc, char *argv[]) {
         print_list(cfg);
         free(cfg);
         exit_code = J_EXIT_OK;
-        goto done;
-    }
-
-    /* --version mode */
-    if (_stricmp(argv[1], "--version") == 0) {
-        log_write("JMP15", "Version mode: v%s", JUMP_VERSION);
-        fprintf(stderr, "Jump v%s\n", JUMP_VERSION);
-        exit_code = J_EXIT_OK;
-        goto done;
-    }
-
-    /* --update mode */
-    if (_stricmp(argv[1], "--update") == 0) {
-        log_write("JMP16", "Update mode requested");
-        exit_code = jump_update();
-        log_write("JMP17", "jump_update returned %d", exit_code);
         goto done;
     }
 

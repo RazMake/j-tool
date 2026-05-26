@@ -216,6 +216,65 @@ static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini,
     return 0;
 }
 
+/* ── expand_constant_values ───────────────────────────────────────────
+ * Iteratively expand {{CONSTANT}} references within constant values
+ * so that constants can reference other constants. Detects circular
+ * references after expansion stabilises. */
+static int expand_constant_values(JumpConfig *cfg) {
+    int changed = 1;
+    int passes = 0;
+    const int max_passes = 10;
+    int i;
+
+    while (changed && passes < max_passes) {
+        changed = 0;
+        passes++;
+        for (i = 0; i < cfg->constant_count; i++) {
+            if (strstr(cfg->constants[i].value, "{{") != NULL) {
+                char expanded[MAX_PATH_LEN];
+                if (config_expand(cfg, cfg->constants[i].value,
+                                  expanded, sizeof(expanded)) == 0) {
+                    if (strcmp(cfg->constants[i].value, expanded) != 0) {
+                        strncpy_s(cfg->constants[i].value, MAX_PATH_LEN,
+                                  expanded, _TRUNCATE);
+                        changed = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Check for unresolved constant self/circular references */
+    for (i = 0; i < cfg->constant_count; i++) {
+        const char *p = cfg->constants[i].value;
+        while ((p = strstr(p, "{{")) != NULL) {
+            const char *close = strstr(p + 2, "}}");
+            if (!close) break;
+            if (_strnicmp(p + 2, "ENV:", 4) != 0) {
+                char token[MAX_ALIAS_LEN];
+                size_t tlen = (size_t)(close - (p + 2));
+                int j;
+                if (tlen < sizeof(token)) {
+                    memcpy(token, p + 2, tlen);
+                    token[tlen] = '\0';
+                    for (j = 0; j < cfg->constant_count; j++) {
+                        if (str_icmp(cfg->constants[j].name, token) == 0) {
+                            error_report(
+                                "Circular constant reference: "
+                                "'%s' references '%s'\n",
+                                cfg->constants[i].name, token);
+                            return -1;
+                        }
+                    }
+                }
+            }
+            p = close + 2;
+        }
+    }
+
+    return 0;
+}
+
 /* ── config_expand ───────────────────────────────────────────────────── */
 
 int config_expand(const JumpConfig *cfg, const char *input,
@@ -423,6 +482,14 @@ int config_load(JumpConfig *cfg) {
     }
     log_write("CFG17", "Root constants merged: %d total", cfg->constant_count);
 
+    /* Expand constant-in-constant references among root constants so
+     * that [Include] paths can use derived constants. */
+    if (expand_constant_values(cfg) != 0) {
+        log_write("CFG17b", "expand_constant_values failed for root constants");
+        free(ini);
+        return J_EXIT_CONFIG_ERROR;
+    }
+
     /* Get root directory for resolving includes */
     get_directory(jumps_path, root_dir, MAX_PATH);
 
@@ -544,6 +611,13 @@ int config_load(JumpConfig *cfg) {
     }
     free(ini);
     log_write("CFG31", "All shortcuts extracted: %d total", cfg->shortcut_count);
+
+    /* Expand constant-in-constant references for constants from included
+     * files that may reference root constants or each other. */
+    if (expand_constant_values(cfg) != 0) {
+        log_write("CFG31b", "expand_constant_values failed after includes");
+        return J_EXIT_CONFIG_ERROR;
+    }
 
     /* 10. Validate */
     ret = config_validate(cfg);

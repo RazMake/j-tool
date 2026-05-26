@@ -36,6 +36,12 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 - `Constant` — name + value pair for template expansion
 - `JumpConfig` — up to 256 shortcuts + 64 constants
 
+## Command Dispatch Order
+- `jump_main()` dispatches CLI flags in two phases:
+  1. **Config-independent** commands first: `--log`, `--osd`, `--install`, `--uninstall`, `--version`, `--update`
+  2. **Config-dependent** commands after `config_load()`: `--list`, alias resolution
+- **Rule:** when adding a new command, verify whether it needs the INI configuration. If it does not, place it before the config-loading section so it remains functional even when INI files are broken/corrupted.
+
 ## Error Handling Pattern
 - All functions return `int` (0 = success, nonzero = specific error code)
 - Exit codes: `J_EXIT_OK`, `J_EXIT_NOT_FOUND`, `J_EXIT_CONFIG_ERROR`, `J_EXIT_RUNTIME_ERROR`
@@ -55,7 +61,11 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 ## Template Expansion
 - `{{CONSTANT}}` → looked up from merged constants (case-insensitive)
 - `{{ENV:VARNAME}}` → looked up from environment variables
-- Single-pass expansion (no nesting)
+- Constants can reference other constants: `WORK={{ROOT}}\Work`
+- Constant values are expanded iteratively after merging (up to 10 passes)
+- Circular constant references (A→B→A) are detected and reported as errors
+- Expansion runs twice: after root constants merge (so include paths can use derived constants) and after all includes are processed
+- Single-pass expansion for shortcut targets at resolve time (no nesting)
 
 ## Parameter Substitution (EXEC type)
 - `{1}`, `{2}`, … replaced with command-line arguments (1-indexed)

@@ -537,6 +537,107 @@ static void test_config_load_no_label_uses_section_name(void **state) {
 
 /* ── config_load: OPEN shortcut type ──────────────────────────────────── */
 
+static void test_config_expand_constant_in_constant(void **state) {
+    (void)state;
+    JumpConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    strcpy_s(cfg.constants[0].name, MAX_ALIAS_LEN, "ROOT");
+    strcpy_s(cfg.constants[0].value, MAX_PATH_LEN, "C:\\Base");
+    strcpy_s(cfg.constants[1].name, MAX_ALIAS_LEN, "WORK");
+    strcpy_s(cfg.constants[1].value, MAX_PATH_LEN, "{{ROOT}}\\Work");
+    cfg.constant_count = 2;
+
+    /* Expand WORK via config_expand — before expand_constant_values
+     * this would return the raw inner reference */
+    char buf[256];
+    /* First expand WORK to see it contains the raw ref */
+    assert_int_equal(0, config_expand(&cfg, "{{WORK}}", buf, sizeof(buf)));
+    /* WORK's value still has {{ROOT}} which gets expanded by config_expand */
+    assert_string_equal("C:\\Base\\Work", buf);
+}
+
+static void test_config_load_constant_chain(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_constchain.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[Constants]\n"
+        "ROOT=C:\\Base\n"
+        "WORK={{ROOT}}\\Work\n"
+        "PROJ={{WORK}}\\MyProject\n"
+        "\n"
+        "[Project]\n"
+        "Label=My Project\n"
+        "Jumps=proj\n"
+        "Path={{PROJ}}\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(0, config_load(cfg));
+    assert_int_equal(1, cfg->shortcut_count);
+
+    /* Constant values should be fully expanded */
+    int found_proj = 0;
+    for (int i = 0; i < cfg->constant_count; i++) {
+        if (_stricmp(cfg->constants[i].name, "PROJ") == 0) {
+            assert_string_equal("C:\\Base\\Work\\MyProject",
+                                cfg->constants[i].value);
+            found_proj = 1;
+        }
+    }
+    assert_true(found_proj);
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
+static void test_config_load_circular_constant(void **state) {
+    (void)state;
+    wchar_t tmp_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_path);
+    wcsncat_s(tmp_path, MAX_PATH, L"jtest_circular.ini", _TRUNCATE);
+
+    HANDLE h = CreateFileW(tmp_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[Constants]\n"
+        "A={{B}}\n"
+        "B={{A}}\n"
+        "\n"
+        "[Dummy]\n"
+        "Jumps=dummy\n"
+        "Path=C:\\Dummy\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char tmp_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, tmp_path, -1, tmp_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", tmp_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    assert_int_equal(J_EXIT_CONFIG_ERROR, config_load(cfg));
+
+    free(cfg);
+    DeleteFileW(tmp_path);
+}
+
 static void test_config_load_open_shortcut(void **state) {
     (void)state;
     wchar_t tmp_path[MAX_PATH];
@@ -615,6 +716,11 @@ int run_config_tests(void) {
         cmocka_unit_test_setup_teardown(test_config_load_exec_hide_console,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_no_label_uses_section_name,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test(test_config_expand_constant_in_constant),
+        cmocka_unit_test_setup_teardown(test_config_load_constant_chain,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_circular_constant,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_open_shortcut,
             config_load_setup, config_load_teardown),
