@@ -22,6 +22,7 @@
 ## What's Left to Build
 - Nothing planned — v1.0 is complete
 
+
 ## Change Log
 | Date | Change |
 |------|--------|
@@ -31,3 +32,4 @@
 | 2026-05-11 | Fixed .cmd/.bat EXEC shortcuts: CreateProcessA can't run batch files directly, added cmd.exe /c wrapper with exec_needs_cmd_wrapper() |
 | 2026-05-27 | Increased MAX_ALIASES_PER_SHORTCUT from 8 to 20 — real-world INI files had up to 14 aliases per shortcut, causing silent truncation and wrong alias resolution |
 | 2026-05-27 | Bumped CACHE_VERSION to 2 (binary cache layout changed due to Shortcut struct size increase) |
+| 2026-05-27 | Win+R Run dialog support: CD shortcuts now open a new cmd.exe window at the target path when no console is attached (detected via GetConsoleWindow), so `j work` from the Run dialog opens a cmd at that directory. Does not affect CMD/PowerShell/Total Commander paths. |

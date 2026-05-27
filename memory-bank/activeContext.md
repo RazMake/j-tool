@@ -13,9 +13,10 @@
 - .cmd/.bat EXEC fix (2026-05-11) — batch file shortcuts now wrapped with `cmd.exe /c` since `CreateProcessA` cannot execute them directly
 - MAX_ALIASES_PER_SHORTCUT raised to 20 (2026-05-27) — real-world INI files exceeded the old limit of 8, causing aliases to be silently dropped and wrong shortcuts to resolve
 - CACHE_VERSION bumped to 2 (2026-05-27) — struct layout change requires cache rebuild
+- Win+R Run dialog CD support (2026-05-27) — when no console is attached, CD shortcuts open a new cmd.exe window at the target path
 
 ## Current Focus
-- Bug fix: aliases beyond 8th position silently dropped, now supports up to 20
+- Win+R Run dialog support for CD shortcuts (open cmd.exe at target path when no console attached)
 
 ## Known Limitations
 | Limitation | Notes |

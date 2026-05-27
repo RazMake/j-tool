@@ -238,6 +238,30 @@ static HANDLE perform_action(const ResolveResult *result) {
             log_write("JMP31", "TC ancestor detected, navigating panel");
             tc_navigate(result->expanded_target);
         }
+
+        /* If no console is attached and we're not inside Total Commander
+         * (e.g. launched from Win+R Run dialog), open a new cmd window
+         * at the target directory. */
+        if (!GetConsoleWindow() && !tc_is_ancestor()) {
+            STARTUPINFOA si_cd;
+            PROCESS_INFORMATION pi_cd;
+            char cmd_run[MAX_PATH_LEN + 32];
+            log_write("JMP31b", "No console detected, opening cmd at '%s'",
+                      result->expanded_target);
+            sprintf_s(cmd_run, sizeof(cmd_run), "cmd.exe /k cd /d \"%s\"",
+                      result->expanded_target);
+            memset(&si_cd, 0, sizeof(si_cd));
+            si_cd.cb = sizeof(si_cd);
+            memset(&pi_cd, 0, sizeof(pi_cd));
+            if (CreateProcessA(NULL, cmd_run, NULL, NULL, FALSE,
+                               CREATE_NEW_CONSOLE, NULL, NULL,
+                               &si_cd, &pi_cd)) {
+                CloseHandle(pi_cd.hThread);
+                CloseHandle(pi_cd.hProcess);
+            }
+            break;
+        }
+
         /* Write path to stdout for PowerShell wrapper */
         HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hStdout && hStdout != INVALID_HANDLE_VALUE) {
