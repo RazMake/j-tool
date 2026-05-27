@@ -11,9 +11,11 @@
 - Memory bank created (2026-05-11) — comprehensive project documentation
 - Multi-word alias support (2026-05-11) — `jump_main()` tries longest multi-word alias first, falls back to single word
 - .cmd/.bat EXEC fix (2026-05-11) — batch file shortcuts now wrapped with `cmd.exe /c` since `CreateProcessA` cannot execute them directly
+- MAX_ALIASES_PER_SHORTCUT raised to 20 (2026-05-27) — real-world INI files exceeded the old limit of 8, causing aliases to be silently dropped and wrong shortcuts to resolve
+- CACHE_VERSION bumped to 2 (2026-05-27) — struct layout change requires cache rebuild
 
 ## Current Focus
-- Diagnostic logging feature added
+- Bug fix: aliases beyond 8th position silently dropped, now supports up to 20
 
 ## Known Limitations
 | Limitation | Notes |

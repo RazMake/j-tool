@@ -29,3 +29,5 @@
 | 2026-05-11 | Memory bank created |
 | 2026-05-11 | Added multi-word alias support (greedy longest-match in jump_main) |
 | 2026-05-11 | Fixed .cmd/.bat EXEC shortcuts: CreateProcessA can't run batch files directly, added cmd.exe /c wrapper with exec_needs_cmd_wrapper() |
+| 2026-05-27 | Increased MAX_ALIASES_PER_SHORTCUT from 8 to 20 — real-world INI files had up to 14 aliases per shortcut, causing silent truncation and wrong alias resolution |
+| 2026-05-27 | Bumped CACHE_VERSION to 2 (binary cache layout changed due to Shortcut struct size increase) |

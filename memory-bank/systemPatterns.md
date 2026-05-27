@@ -77,7 +77,7 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 |-----------|-------|
 | Max shortcuts | 256 |
 | Max constants | 64 |
-| Max aliases per shortcut | 8 |
+| Max aliases per shortcut | 20 |
 | Max sections (INI parser) | 64 |
 | Max entries per section | 32 |
 | Max key length | 64 bytes |
