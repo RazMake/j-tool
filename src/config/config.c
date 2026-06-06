@@ -439,18 +439,13 @@ int config_load(JumpConfig *cfg) {
         return J_EXIT_CONFIG_ERROR;
     }
 
-    /* 3. Try cache */
-    if (cache_is_fresh(cache_path)) {
-        log_write("CFG05", "Cache is fresh, attempting cache load");
-        if (cache_load(cache_path, cfg) == 0) {
-            log_write("CFG06", "Cache loaded: %d shortcuts, %d constants",
-                      cfg->shortcut_count, cfg->constant_count);
-            return 0;
-        }
-        log_write("CFG07", "Cache load failed despite being fresh, re-parsing");
-    } else {
-        log_write("CFG08", "Cache is stale or missing, will parse INI files");
+    /* 3. Try cache (single open: check freshness + load in one pass) */
+    if (cache_try_load(cache_path, cfg) == 0) {
+        log_write("CFG06", "Cache loaded: %d shortcuts, %d constants",
+                  cfg->shortcut_count, cfg->constant_count);
+        return 0;
     }
+    log_write("CFG08", "Cache is stale or missing, will parse INI files");
 
     /* 4. Read root INI file */
     raw_len = read_file_bytes(jumps_path, &raw);
@@ -539,15 +534,30 @@ int config_load(JumpConfig *cfg) {
 
             /* If the expanded path is absolute, use it directly;
                otherwise resolve it relative to the root INI directory. */
+            int is_relative = 0;
             if ((inc_file_w[0] && inc_file_w[1] == L':') ||
                 (inc_file_w[0] == L'\\' && inc_file_w[1] == L'\\')) {
                 wcsncpy_s(inc_path, MAX_PATH, inc_file_w, _TRUNCATE);
             } else {
+                is_relative = 1;
                 _snwprintf_s(inc_path, MAX_PATH, _TRUNCATE, L"%s\\%s",
                              root_dir, inc_file_w);
             }
 
             raw_len = read_file_bytes(inc_path, &raw);
+
+            /* Fallback: try the parent of root_dir for relative paths */
+            if (raw_len == 0 && is_relative) {
+                wchar_t parent_dir[MAX_PATH];
+                get_directory(root_dir, parent_dir, MAX_PATH);
+                if (parent_dir[0] != L'\0') {
+                    _snwprintf_s(inc_path, MAX_PATH, _TRUNCATE, L"%s\\%s",
+                                 parent_dir, inc_file_w);
+                    log_write("CFG20b", "Retrying include in parent dir: '%ls'", inc_path);
+                    raw_len = read_file_bytes(inc_path, &raw);
+                }
+            }
+
             if (raw_len == 0) {
                 char inc_path_a[MAX_PATH];
                 WideCharToMultiByte(CP_ACP, 0, inc_path, -1,

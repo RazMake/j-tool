@@ -39,6 +39,13 @@ int cache_is_fresh(const wchar_t *cache_path);
 int cache_load(const wchar_t *cache_path, JumpConfig *cfg);
 
 /*
+ * Try to load config from cache in a single file open.
+ * Checks freshness and, if fresh, loads the data in one pass.
+ * Returns 0 on success (cfg populated), non-zero if stale/missing/error.
+ */
+int cache_try_load(const wchar_t *cache_path, JumpConfig *cfg);
+
+/*
  * Save config to binary cache file.
  * Writes header (with source file info) followed by shortcuts and constants.
  * Returns 0 on success, non-zero on failure.

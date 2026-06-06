@@ -184,3 +184,86 @@ int cache_is_fresh(const wchar_t *cache_path) {
     log_write("CAC17", "cache_is_fresh: cache is fresh");
     return 1;
 }
+
+int cache_try_load(const wchar_t *cache_path, JumpConfig *cfg) {
+    HANDLE hFile;
+    CacheHeader header;
+    DWORD bytesRead;
+
+    log_write("CAC20", "cache_try_load: single-pass check + load");
+
+    if (!cfg) return -1;
+
+    hFile = CreateFileW(cache_path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        log_write("CAC21", "cache_try_load: cache file not found (err=%lu)", GetLastError());
+        return -1;
+    }
+
+    if (!ReadFile(hFile, &header, sizeof(header), &bytesRead, NULL) ||
+        bytesRead != sizeof(header)) {
+        log_write("CAC22", "cache_try_load: cannot read header");
+        CloseHandle(hFile);
+        return -1;
+    }
+
+    if (header.magic != CACHE_MAGIC || header.version != CACHE_VERSION) {
+        log_write("CAC23", "cache_try_load: magic/version mismatch");
+        CloseHandle(hFile);
+        return -1;
+    }
+
+    /* Check source file freshness */
+    log_write("CAC24", "cache_try_load: checking %d source files", header.source_file_count);
+    for (int i = 0; i < header.source_file_count; i++) {
+        WIN32_FILE_ATTRIBUTE_DATA fdata;
+        if (!GetFileAttributesExW(header.source_files[i].path,
+                                  GetFileExInfoStandard, &fdata)) {
+            log_write("CAC25", "cache_try_load: source file %d not found", i);
+            CloseHandle(hFile);
+            return -1;
+        }
+        if (CompareFileTime(&fdata.ftLastWriteTime,
+                            &header.source_files[i].mtime) != 0) {
+            log_write("CAC26", "cache_try_load: source file %d has changed", i);
+            CloseHandle(hFile);
+            return -1;
+        }
+    }
+
+    /* Cache is fresh — load data from the already-open file handle */
+    if (header.shortcut_count < 0 || header.shortcut_count > MAX_SHORTCUTS ||
+        header.constant_count < 0 || header.constant_count > MAX_CONSTANTS) {
+        log_write("CAC27", "cache_try_load: invalid counts");
+        CloseHandle(hFile);
+        return -1;
+    }
+
+    memset(cfg, 0, sizeof(JumpConfig));
+
+    if (header.shortcut_count > 0) {
+        DWORD sc_size = (DWORD)(header.shortcut_count * sizeof(Shortcut));
+        if (!ReadFile(hFile, cfg->shortcuts, sc_size, &bytesRead, NULL) ||
+            bytesRead != sc_size) {
+            CloseHandle(hFile);
+            return -1;
+        }
+    }
+    cfg->shortcut_count = header.shortcut_count;
+
+    if (header.constant_count > 0) {
+        DWORD ct_size = (DWORD)(header.constant_count * sizeof(Constant));
+        if (!ReadFile(hFile, cfg->constants, ct_size, &bytesRead, NULL) ||
+            bytesRead != ct_size) {
+            CloseHandle(hFile);
+            return -1;
+        }
+    }
+    cfg->constant_count = header.constant_count;
+
+    CloseHandle(hFile);
+    log_write("CAC28", "cache_try_load: loaded %d shortcuts, %d constants",
+              cfg->shortcut_count, cfg->constant_count);
+    return 0;
+}

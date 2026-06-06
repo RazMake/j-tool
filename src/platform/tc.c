@@ -121,30 +121,29 @@ int tc_navigate(const char *directory) {
     return 0;
 }
 
-/* Walk the process tree via toolhelp snapshot to find pid's parent. */
-static DWORD get_parent_pid(DWORD pid) {
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+/* Walk the process tree using a single snapshot to find pid's parent. */
+static DWORD get_parent_pid_from_snap(HANDLE snap, DWORD pid) {
     PROCESSENTRY32 pe;
-
-    if (snap == INVALID_HANDLE_VALUE) return 0;
-
     pe.dwSize = sizeof(pe);
     if (Process32First(snap, &pe)) {
         do {
-            if (pe.th32ProcessID == pid) {
-                CloseHandle(snap);
+            if (pe.th32ProcessID == pid)
                 return pe.th32ParentProcessID;
-            }
         } while (Process32Next(snap, &pe));
     }
-    CloseHandle(snap);
     return 0;
 }
 
 int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
     DWORD pid = GetCurrentProcessId();
+    HANDLE snap;
     int i;
     log_write("TC_10", "tc_find_ancestor_path: starting from pid=%lu", (unsigned long)pid);
+
+    /* Take ONE process snapshot and reuse it for the entire tree walk
+     * instead of creating a new snapshot at each level. */
+    snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return -1;
 
     for (i = 0; i < 10; i++) {
         char name[MAX_PATH];
@@ -152,8 +151,8 @@ int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
         HANDLE proc;
         char *base;
 
-        pid = get_parent_pid(pid);
-        if (pid == 0) return -1;
+        pid = get_parent_pid_from_snap(snap, pid);
+        if (pid == 0) break;
 
         proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
         if (!proc) continue;
@@ -168,6 +167,7 @@ int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
         base = base ? base + 1 : name;
         if (_stricmp(base, "TOTALCMD64.EXE") == 0 ||
             _stricmp(base, "TOTALCMD.EXE") == 0) {
+            CloseHandle(snap);
             if (strlen(name) + 1 > tc_path_size)
                 return -1;
             strncpy_s(tc_path, tc_path_size, name, _TRUNCATE);
@@ -175,13 +175,20 @@ int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
             return 0;
         }
     }
+    CloseHandle(snap);
     log_write("TC_12", "tc_find_ancestor_path: TC not found in ancestor chain");
     return -1;
 }
 
 int tc_is_ancestor(void) {
     char tc_path[MAX_PATH];
-    int result = tc_find_ancestor_path(tc_path, sizeof(tc_path)) == 0 ? 1 : 0;
+    int result;
+    /* Quick check: if no TC window exists, skip the expensive process walk */
+    if (!FindWindowA("TTOTAL_CMD", NULL)) {
+        log_write("TC_06", "tc_is_ancestor: no (TC window not found)");
+        return 0;
+    }
+    result = tc_find_ancestor_path(tc_path, sizeof(tc_path)) == 0 ? 1 : 0;
     log_write("TC_06", "tc_is_ancestor: %s", result ? "yes" : "no");
     return result;
 }
