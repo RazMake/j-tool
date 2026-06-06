@@ -25,7 +25,7 @@
 #include <string.h>
 #include <windows.h>
 
-/* Print usage/help text to stderr */
+/* Print brief usage text to stderr */
 static void print_usage(void) {
     fprintf(stderr,
         "Jump v%s - quick directory/URL/program launcher\n"
@@ -33,6 +33,7 @@ static void print_usage(void) {
         "Usage:\n"
         "  j  <alias> [params...]       Resolve alias and perform action\n"
         "  jc <alias> [params...]       Same, with console output\n"
+        "  jc --help                    Show detailed help with config examples\n"
         "  jc --install [--tc-panel=X]  Install shell integration (X=L|R)\n"
         "  jc --uninstall               Remove shell integration\n"
         "  jc --list                    List all defined aliases\n"
@@ -44,6 +45,95 @@ static void print_usage(void) {
         "\n"
         "Environment:\n"
         "  JUMPS  Path to root INI configuration file\n",
+        JUMP_VERSION);
+}
+
+/* Print detailed help text with config examples to stderr */
+static void print_help(void) {
+    fprintf(stderr,
+        "Jump v%s - quick directory/URL/program launcher\n"
+        "\n"
+        "USAGE:\n"
+        "  j  <alias> [params...]       Resolve alias and perform action\n"
+        "  jc <alias> [params...]       Same, with console output\n"
+        "\n"
+        "OPTIONS:\n"
+        "  --help                       Show this detailed help message\n"
+        "  --install [--tc-panel=X]     Install shell integration\n"
+        "                               X = L (left panel) or R (right panel)\n"
+        "  --uninstall                  Remove shell integration\n"
+        "  --list                       List all defined aliases\n"
+        "  --version                    Show version information\n"
+        "  --update                     Check for updates and install\n"
+        "  --reload                     Force reload configuration\n"
+        "  --log                        Enable logging for the next command\n"
+        "  --osd \"text\"                 Show OSD overlay (internal use)\n"
+        "\n"
+        "ENVIRONMENT:\n"
+        "  JUMPS    Path to the root INI configuration file.\n"
+        "           Example: set JUMPS=C:\\Users\\me\\jumps.ini\n"
+        "\n"
+        "CONFIGURATION:\n"
+        "  Jump reads shortcuts from INI files pointed to by the JUMPS\n"
+        "  environment variable. The root file can include other files\n"
+        "  and define reusable constants.\n"
+        "\n"
+        "  --- Root config (pointed to by JUMPS) ---\n"
+        "\n"
+        "    [Constants]\n"
+        "    PROJECTS=C:\\Projects\n"
+        "    TOOLS=D:\\Tools\n"
+        "\n"
+        "    [Include]\n"
+        "    work.ini\n"
+        "    personal.ini\n"
+        "\n"
+        "  --- CD shortcut (change directory) ---\n"
+        "\n"
+        "    [My Project]\n"
+        "    Label=My Project Folder\n"
+        "    Jumps=proj,mp\n"
+        "    Path={{PROJECTS}}\\MyProject\n"
+        "\n"
+        "    Usage: j proj\n"
+        "\n"
+        "  --- OPEN shortcut (open URL or file) ---\n"
+        "\n"
+        "    [Company Site]\n"
+        "    Label=Company Website\n"
+        "    Jumps=company,comp\n"
+        "    Open=https://company.example.com\n"
+        "\n"
+        "    Usage: j company\n"
+        "\n"
+        "  --- EXEC shortcut (run a program) ---\n"
+        "\n"
+        "    [Editor]\n"
+        "    Label=Open Editor\n"
+        "    Jumps=edit,ed\n"
+        "    Execute={{TOOLS}}\\editor.exe {1} {2}\n"
+        "    HideConsole=1\n"
+        "\n"
+        "    Usage: j edit file.txt\n"
+        "\n"
+        "SHORTCUT FIELDS:\n"
+        "  Label          Display name shown in OSD and --list output\n"
+        "  Jumps          Comma-separated aliases for the shortcut\n"
+        "  Path=<dir>     CD shortcut: directory to navigate to\n"
+        "  Open=<target>  OPEN shortcut: URL or file to open\n"
+        "  Execute=<cmd>  EXEC shortcut: command line to run\n"
+        "  HideConsole=1  EXEC only: hide the spawned console window\n"
+        "\n"
+        "EXPANSION:\n"
+        "  {{CONSTANT}}       Expands a constant defined in [Constants]\n"
+        "  {{ENV:VARNAME}}    Expands an environment variable\n"
+        "  {1}, {2}, ...      Replaced by command-line parameters\n"
+        "\n"
+        "EXAMPLES:\n"
+        "  j proj             Navigate to the project directory\n"
+        "  j edit file.txt    Open file.txt in the configured editor\n"
+        "  jc --list          List all defined shortcuts\n"
+        "  jc --reload        Reload configuration after editing INI files\n",
         JUMP_VERSION);
 }
 
@@ -466,6 +556,14 @@ int jump_main(int argc, char *argv[]) {
     if (argc < 2) {
         log_write("JMP03", "No arguments, printing usage");
         print_usage();
+        exit_code = J_EXIT_OK;
+        goto done;
+    }
+
+    /* --help mode */
+    if (_stricmp(argv[1], "--help") == 0 || _stricmp(argv[1], "-h") == 0) {
+        log_write("JMP03b", "Help mode requested");
+        print_help();
         exit_code = J_EXIT_OK;
         goto done;
     }

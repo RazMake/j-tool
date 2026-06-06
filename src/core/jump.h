@@ -10,7 +10,10 @@
  *   j --osd "text"              - show OSD overlay
  *   jc --install [--tc-panel=X] - install integration
  *   jc --uninstall              - uninstall integration
- *   jc --list                   - list all aliases *   jc --reload                 - force reload configuration *   j (no args)                 - print usage/help
+ *   jc --list                   - list all aliases
+ *   jc --reload                 - force reload configuration
+ *   jc --help                   - show detailed help with config examples
+ *   j (no args)                 - print usage/help
  *
  * Returns J_EXIT_OK, J_EXIT_NOT_FOUND, J_EXIT_CONFIG_ERROR, or J_EXIT_RUNTIME_ERROR.
  */
