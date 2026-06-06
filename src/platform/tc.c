@@ -56,9 +56,16 @@ static int tc_find_path_in_hive(HKEY root, char *tc_path, size_t tc_path_size) {
 
 int tc_find_path(char *tc_path, size_t tc_path_size) {
     /* Try machine-wide install first (HKLM), then per-user (HKCU) */
-    if (tc_find_path_in_hive(HKEY_LOCAL_MACHINE, tc_path, tc_path_size) == 0)
+    if (tc_find_path_in_hive(HKEY_LOCAL_MACHINE, tc_path, tc_path_size) == 0) {
+        log_write("TC_07", "tc_find_path: found in HKLM: '%s'", tc_path);
         return 0;
-    return tc_find_path_in_hive(HKEY_CURRENT_USER, tc_path, tc_path_size);
+    }
+    if (tc_find_path_in_hive(HKEY_CURRENT_USER, tc_path, tc_path_size) == 0) {
+        log_write("TC_08", "tc_find_path: found in HKCU: '%s'", tc_path);
+        return 0;
+    }
+    log_write("TC_09", "tc_find_path: not found in registry");
+    return -1;
 }
 
 int tc_build_cd_command(const char *tc_path, const char *panel,
@@ -108,6 +115,7 @@ int tc_navigate(const char *directory) {
         return -1;
     }
 
+    log_write("TC_13", "tc_navigate: launched TC command successfully");
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
@@ -136,6 +144,7 @@ static DWORD get_parent_pid(DWORD pid) {
 int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
     DWORD pid = GetCurrentProcessId();
     int i;
+    log_write("TC_10", "tc_find_ancestor_path: starting from pid=%lu", (unsigned long)pid);
 
     for (i = 0; i < 10; i++) {
         char name[MAX_PATH];
@@ -162,9 +171,11 @@ int tc_find_ancestor_path(char *tc_path, size_t tc_path_size) {
             if (strlen(name) + 1 > tc_path_size)
                 return -1;
             strncpy_s(tc_path, tc_path_size, name, _TRUNCATE);
+            log_write("TC_11", "tc_find_ancestor_path: found '%s' at depth %d", name, i);
             return 0;
         }
     }
+    log_write("TC_12", "tc_find_ancestor_path: TC not found in ancestor chain");
     return -1;
 }
 

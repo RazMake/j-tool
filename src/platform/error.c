@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "error.h"
+#include "log.h"
 
 /* Nonzero when the process has an attached console window. */
 static int s_is_console = 0;
@@ -232,6 +233,7 @@ void error_init(void) {
      * popup (typical for j.exe which is a Windows subsystem app).
      */
     s_is_console = (GetConsoleWindow() != NULL);
+    log_write("ERR01", "error_init: mode=%s", s_is_console ? "console" : "popup");
 }
 
 void error_report(const char *fmt, ...) {
@@ -241,6 +243,8 @@ void error_report(const char *fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+
+    log_write("ERR02", "error_report: %s", buf);
 
     if (s_is_console) {
         error_print_console(buf);

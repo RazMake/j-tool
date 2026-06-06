@@ -120,10 +120,12 @@ static int merge_constants(JumpConfig *cfg, const IniFile *ini) {
     const IniSection *sec = ini_find_section(ini, "Constants");
     int i, j;
     if (!sec) return 0;
+    log_write("CFG37", "merge_constants: %d entries to merge", sec->entry_count);
     for (i = 0; i < sec->entry_count; i++) {
         /* check dup */
         for (j = 0; j < cfg->constant_count; j++) {
             if (str_icmp(cfg->constants[j].name, sec->entries[i].key) == 0) {
+                log_write("CFG38", "merge_constants: duplicate '%s'", sec->entries[i].key);
                 error_report("Duplicate constant '%s'\n",
                         sec->entries[i].key);
                 return -1;
@@ -166,6 +168,7 @@ static int extract_shortcuts(JumpConfig *cfg, const IniFile *ini,
             continue;
 
         if (cfg->shortcut_count >= MAX_SHORTCUTS) {
+            log_write("CFG39", "extract_shortcuts: limit reached (max %d)", MAX_SHORTCUTS);
             error_report("Too many shortcuts (max %d)\n", MAX_SHORTCUTS);
             return -1;
         }

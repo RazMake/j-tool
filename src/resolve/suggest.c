@@ -1,4 +1,5 @@
 #include "suggest.h"
+#include "log.h"
 #include <string.h>
 #include <ctype.h>
 
@@ -34,6 +35,8 @@ int levenshtein_distance(const char *a, const char *b) {
 int suggest_aliases(const JumpConfig *cfg, const char *input,
                     Suggestion *suggestions, int max_suggestions) {
     int count = 0;
+    log_write("SUG01", "suggest_aliases: input='%s', shortcuts=%d",
+              input, cfg->shortcut_count);
 
     for (int i = 0; i < cfg->shortcut_count; i++) {
         for (int j = 0; j < cfg->shortcuts[i].alias_count; j++) {
@@ -74,5 +77,6 @@ int suggest_aliases(const JumpConfig *cfg, const char *input,
         }
     }
 
+    log_write("SUG02", "suggest_aliases: found %d suggestion(s)", count);
     return count;
 }

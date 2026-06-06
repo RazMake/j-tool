@@ -130,8 +130,11 @@ static void spawn_osd(const char *text, ShortcutType type, const char *error) {
     if (CreateProcessA(NULL, cmd_line, NULL, NULL, FALSE,
                        DETACHED_PROCESS | CREATE_NO_WINDOW,
                        NULL, NULL, &si, &pi)) {
+        log_write("JMP28", "OSD spawned: '%s'", text);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
+    } else {
+        log_write("JMP29", "OSD spawn failed (err=%lu)", GetLastError());
     }
 }
 
@@ -148,7 +151,11 @@ static void write_temp_cmd(const char *content) {
 
     hFile = CreateFileA(path, GENERIC_WRITE, 0, NULL,
                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) return;
+    if (hFile == INVALID_HANDLE_VALUE) {
+        log_write("JMP45", "write_temp_cmd: cannot create '%s' (err=%lu)",
+                  path, GetLastError());
+        return;
+    }
     WriteFile(hFile, content, (DWORD)strlen(content), &written, NULL);
     CloseHandle(hFile);
 }
