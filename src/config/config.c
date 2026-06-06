@@ -551,10 +551,12 @@ int config_load(JumpConfig *cfg) {
                                     inc_path_a, MAX_PATH, NULL, NULL);
                 log_write("CFG20", "Cannot read include file '%s' (resolved='%s', err=%lu)",
                           inc_file, inc_path_a, GetLastError());
-                error_report("Cannot read include file '%s'\n",
-                        inc_file);
-                free(ini);
-                return J_EXIT_CONFIG_ERROR;
+                if (cfg->config_error_count < MAX_CONFIG_ERRORS) {
+                    snprintf(cfg->config_errors[cfg->config_error_count],
+                             MAX_PATH_LEN, "Missing config: %s", inc_path_a);
+                    cfg->config_error_count++;
+                }
+                continue;
             }
             log_write("CFG21", "Read include file '%s': %lu bytes",
                       inc_file, (unsigned long)raw_len);
@@ -563,8 +565,12 @@ int config_load(JumpConfig *cfg) {
             free(raw);
             if (!utf8) {
                 log_write("CFG22", "Encoding conversion failed for '%s'", inc_file);
-                free(ini);
-                return J_EXIT_CONFIG_ERROR;
+                if (cfg->config_error_count < MAX_CONFIG_ERRORS) {
+                    snprintf(cfg->config_errors[cfg->config_error_count],
+                             MAX_PATH_LEN, "Encoding error: %s", inc_file);
+                    cfg->config_error_count++;
+                }
+                continue;
             }
 
             inc_ini = (IniFile *)calloc(1, sizeof(IniFile));
@@ -577,10 +583,14 @@ int config_load(JumpConfig *cfg) {
             if (ini_parse(utf8, utf8_len, inc_ini) != 0) {
                 log_write("CFG24", "Parse failed in '%s': %s",
                           inc_file, inc_ini->error_msg);
-                error_report("Parse failed in '%s': %s\n",
-                        inc_file, inc_ini->error_msg);
-                free(utf8); free(inc_ini); free(ini);
-                return J_EXIT_CONFIG_ERROR;
+                if (cfg->config_error_count < MAX_CONFIG_ERRORS) {
+                    snprintf(cfg->config_errors[cfg->config_error_count],
+                             MAX_PATH_LEN, "Parse error in '%s': %s",
+                             inc_file, inc_ini->error_msg);
+                    cfg->config_error_count++;
+                }
+                free(utf8); free(inc_ini);
+                continue;
             }
             log_write("CFG25", "Parsed include '%s': %d sections",
                       inc_file, inc_ini->section_count);
@@ -643,8 +653,11 @@ int config_load(JumpConfig *cfg) {
     }
     log_write("CFG33", "Config validated successfully");
 
-    /* 11-12. Save cache */
-    if (cache_save(cache_path, cfg, sources, source_count) != 0) {
+    /* 11-12. Save cache (skip if files are missing so we recheck next time) */
+    if (cfg->config_error_count > 0) {
+        log_write("CFG34b", "Skipping cache save: %d config error(s)",
+                  cfg->config_error_count);
+    } else if (cache_save(cache_path, cfg, sources, source_count) != 0) {
         log_write("CFG34", "cache_save failed (non-fatal)");
     } else {
         log_write("CFG35", "Cache saved: %d source files tracked", source_count);

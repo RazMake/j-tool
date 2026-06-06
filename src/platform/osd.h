@@ -11,6 +11,8 @@ typedef enum {
 
 /*
  * Show a transparent OSD overlay with the given text and action icon.
+ * If error is non-NULL, it is displayed below the main text in red
+ * with a smaller font.
  *
  * Creates a borderless, semi-transparent popup window:
  *   - WS_POPUP | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW
@@ -22,6 +24,6 @@ typedef enum {
  * Runs its own message loop, then returns.
  * Returns 0 on success.
  */
-int osd_show(const char *text, OsdIcon icon);
+int osd_show(const char *text, OsdIcon icon, const char *error);
 
 #endif /* OSD_H */

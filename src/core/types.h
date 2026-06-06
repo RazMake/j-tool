@@ -12,6 +12,7 @@
 #define MAX_SHORTCUTS            256
 #define MAX_CONSTANTS            64
 #define MAX_SOURCE_FILES         32
+#define MAX_CONFIG_ERRORS        16
 
 /* --- Process exit codes (used by shells to detect errors) --- */
 #define J_EXIT_OK                0
@@ -46,6 +47,8 @@ typedef struct {
     int      shortcut_count;
     Constant constants[MAX_CONSTANTS];
     int      constant_count;
+    char     config_errors[MAX_CONFIG_ERRORS][MAX_PATH_LEN];
+    int      config_error_count;
 } JumpConfig;
 
 #endif /* JUMP_TYPES_H */

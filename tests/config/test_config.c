@@ -165,6 +165,36 @@ static int config_load_teardown(void **state) {
     wchar_t cp[MAX_PATH];
     if (cache_get_default_path(cp, MAX_PATH) == 0)
         DeleteFileW(cp);
+
+    /* Clean up any temp files that tests may have created.
+     * DeleteFileW silently fails for non-existent files, so this is safe
+     * even when a test didn't create all of these. This ensures cleanup
+     * happens even when an assertion failure aborts the test early. */
+    wchar_t tmp_dir[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_dir);
+    static const wchar_t *temp_files[] = {
+        L"jtest_bom.ini",
+        L"jtest_utf16.ini",
+        L"jtest_multiword.ini",
+        L"jtest_empty.ini",
+        L"jtest_hideconsole.ini",
+        L"jtest_nolabel.ini",
+        L"jtest_constchain.ini",
+        L"jtest_circular.ini",
+        L"jtest_openshortcut.ini",
+        L"jtest_miss_root.ini",
+        L"jtest_good_inc.ini",
+        L"jtest_partial_root.ini",
+        L"jtest_nocache_root.ini",
+        L"jtest_bad_inc.ini",
+        L"jtest_good_inc2.ini",
+        L"jtest_badinc_root.ini",
+    };
+    for (int i = 0; i < (int)(sizeof(temp_files) / sizeof(temp_files[0])); i++) {
+        wchar_t full[MAX_PATH];
+        _snwprintf_s(full, MAX_PATH, _TRUNCATE, L"%s%s", tmp_dir, temp_files[i]);
+        DeleteFileW(full);
+    }
     return 0;
 }
 
@@ -313,6 +343,11 @@ static void test_config_load_cache_hit(void **state) {
     assert_non_null(cfg1);
     assert_int_equal(0, config_load(cfg1));
 
+    /* Verify cache file was written */
+    wchar_t cache_path[MAX_PATH];
+    assert_int_equal(0, cache_get_default_path(cache_path, MAX_PATH));
+    assert_int_equal(1, cache_is_fresh(cache_path));
+
     /* Second load — should hit cache */
     JumpConfig *cfg2 = calloc(1, sizeof(JumpConfig));
     assert_non_null(cfg2);
@@ -320,6 +355,19 @@ static void test_config_load_cache_hit(void **state) {
 
     assert_int_equal(cfg1->shortcut_count, cfg2->shortcut_count);
     assert_int_equal(cfg1->constant_count, cfg2->constant_count);
+
+    /* Verify individual shortcut data survives the cache roundtrip */
+    for (int i = 0; i < cfg1->shortcut_count; i++) {
+        assert_int_equal(cfg1->shortcuts[i].type, cfg2->shortcuts[i].type);
+        assert_string_equal(cfg1->shortcuts[i].target, cfg2->shortcuts[i].target);
+        assert_string_equal(cfg1->shortcuts[i].label, cfg2->shortcuts[i].label);
+        assert_int_equal(cfg1->shortcuts[i].alias_count,
+                         cfg2->shortcuts[i].alias_count);
+        for (int j = 0; j < cfg1->shortcuts[i].alias_count; j++) {
+            assert_string_equal(cfg1->shortcuts[i].aliases[j],
+                                cfg2->shortcuts[i].aliases[j]);
+        }
+    }
 
     free(cfg1);
     free(cfg2);
@@ -672,6 +720,207 @@ static void test_config_load_open_shortcut(void **state) {
     DeleteFileW(tmp_path);
 }
 
+/* ── config_load: missing include files ───────────────────────────────── */
+
+static void test_config_load_missing_include_continues(void **state) {
+    (void)state;
+    wchar_t tmp_dir[MAX_PATH];
+    wchar_t root_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_dir);
+
+    /* Create root INI that includes a nonexistent file */
+    _snwprintf_s(root_path, MAX_PATH, _TRUNCATE, L"%sjtest_miss_root.ini", tmp_dir);
+    HANDLE h = CreateFileW(root_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+
+    const char *content =
+        "[Constants]\nROOT=C:\\Base\n\n"
+        "[Include]\nnonexistent_file.ini\n\n"
+        "[Local]\nLabel=Local Dir\nJumps=local\nPath=C:\\Local\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char root_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, root_path, -1, root_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", root_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    int rc = config_load(cfg);
+    assert_int_equal(0, rc);
+
+    /* Root shortcut should still be loaded */
+    assert_int_equal(1, cfg->shortcut_count);
+    assert_string_equal("local", cfg->shortcuts[0].aliases[0]);
+
+    /* Missing file should be recorded */
+    assert_int_equal(1, cfg->config_error_count);
+    assert_non_null(strstr(cfg->config_errors[0], "nonexistent_file.ini"));
+
+    free(cfg);
+    DeleteFileW(root_path);
+}
+
+static void test_config_load_missing_include_partial(void **state) {
+    (void)state;
+    wchar_t tmp_dir[MAX_PATH];
+    wchar_t root_path[MAX_PATH];
+    wchar_t good_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_dir);
+
+    /* Create a valid include file */
+    _snwprintf_s(good_path, MAX_PATH, _TRUNCATE, L"%sjtest_good_inc.ini", tmp_dir);
+    HANDLE h = CreateFileW(good_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    const char *good_content =
+        "[Included]\nLabel=From Include\nJumps=inc\nPath=C:\\Included\n";
+    DWORD written;
+    WriteFile(h, good_content, (DWORD)strlen(good_content), &written, NULL);
+    CloseHandle(h);
+
+    /* Create root INI that includes both the good file and a missing one */
+    _snwprintf_s(root_path, MAX_PATH, _TRUNCATE, L"%sjtest_partial_root.ini", tmp_dir);
+    h = CreateFileW(root_path, GENERIC_WRITE, 0, NULL,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    char root_content[1024];
+    _snprintf_s(root_content, sizeof(root_content), _TRUNCATE,
+        "[Include]\n"
+        "jtest_good_inc.ini\n"
+        "totally_missing.ini\n"
+        "\n"
+        "[RootEntry]\nLabel=Root\nJumps=root\nPath=C:\\Root\n");
+    WriteFile(h, root_content, (DWORD)strlen(root_content), &written, NULL);
+    CloseHandle(h);
+
+    char root_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, root_path, -1, root_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", root_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    int rc = config_load(cfg);
+    assert_int_equal(0, rc);
+
+    /* Should have shortcuts from both the good include and the root */
+    assert_int_equal(2, cfg->shortcut_count);
+
+    /* One missing file recorded */
+    assert_int_equal(1, cfg->config_error_count);
+    assert_non_null(strstr(cfg->config_errors[0], "totally_missing.ini"));
+
+    free(cfg);
+    DeleteFileW(root_path);
+    DeleteFileW(good_path);
+}
+
+static void test_config_load_missing_include_no_cache(void **state) {
+    (void)state;
+    wchar_t tmp_dir[MAX_PATH];
+    wchar_t root_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_dir);
+
+    _snwprintf_s(root_path, MAX_PATH, _TRUNCATE, L"%sjtest_nocache_root.ini", tmp_dir);
+    HANDLE h = CreateFileW(root_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    const char *content =
+        "[Include]\nmissing.ini\n\n"
+        "[Shortcut]\nJumps=sc\nPath=C:\\SC\n";
+    DWORD written;
+    WriteFile(h, content, (DWORD)strlen(content), &written, NULL);
+    CloseHandle(h);
+
+    char root_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, root_path, -1, root_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", root_a);
+
+    /* First load */
+    JumpConfig *cfg1 = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg1);
+    assert_int_equal(0, config_load(cfg1));
+    assert_int_equal(1, cfg1->config_error_count);
+
+    /* Second load should NOT hit cache (cache wasn't saved) */
+    JumpConfig *cfg2 = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg2);
+    assert_int_equal(0, config_load(cfg2));
+    assert_int_equal(1, cfg2->config_error_count);
+    assert_non_null(strstr(cfg2->config_errors[0], "missing.ini"));
+
+    free(cfg1);
+    free(cfg2);
+    DeleteFileW(root_path);
+}
+
+static void test_config_load_malformed_include_continues(void **state) {
+    (void)state;
+    wchar_t tmp_dir[MAX_PATH];
+    wchar_t root_path[MAX_PATH];
+    wchar_t bad_path[MAX_PATH];
+    wchar_t good_path[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp_dir);
+
+    /* Create a malformed include file */
+    _snwprintf_s(bad_path, MAX_PATH, _TRUNCATE, L"%sjtest_bad_inc.ini", tmp_dir);
+    HANDLE h = CreateFileW(bad_path, GENERIC_WRITE, 0, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    const char *bad_content = "[Unclosed Section\nkey=value\n";
+    DWORD written;
+    WriteFile(h, bad_content, (DWORD)strlen(bad_content), &written, NULL);
+    CloseHandle(h);
+
+    /* Create a valid include file */
+    _snwprintf_s(good_path, MAX_PATH, _TRUNCATE, L"%sjtest_good_inc2.ini", tmp_dir);
+    h = CreateFileW(good_path, GENERIC_WRITE, 0, NULL,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    const char *good_content =
+        "[ValidEntry]\nLabel=Valid\nJumps=valid\nPath=C:\\Valid\n";
+    WriteFile(h, good_content, (DWORD)strlen(good_content), &written, NULL);
+    CloseHandle(h);
+
+    /* Create root INI that includes the bad file first, then the good one */
+    _snwprintf_s(root_path, MAX_PATH, _TRUNCATE, L"%sjtest_badinc_root.ini", tmp_dir);
+    h = CreateFileW(root_path, GENERIC_WRITE, 0, NULL,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    assert_true(h != INVALID_HANDLE_VALUE);
+    const char *root_content =
+        "[Include]\n"
+        "jtest_bad_inc.ini\n"
+        "jtest_good_inc2.ini\n"
+        "\n"
+        "[RootShortcut]\nLabel=Root\nJumps=root\nPath=C:\\Root\n";
+    WriteFile(h, root_content, (DWORD)strlen(root_content), &written, NULL);
+    CloseHandle(h);
+
+    char root_a[MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, root_path, -1, root_a, MAX_PATH, NULL, NULL);
+    SetEnvironmentVariableA("JUMPS", root_a);
+
+    JumpConfig *cfg = calloc(1, sizeof(JumpConfig));
+    assert_non_null(cfg);
+    int rc = config_load(cfg);
+    assert_int_equal(0, rc);
+
+    /* Shortcuts from valid include and root should be loaded */
+    assert_int_equal(2, cfg->shortcut_count);
+
+    /* Parse error should be recorded */
+    assert_int_equal(1, cfg->config_error_count);
+    assert_non_null(strstr(cfg->config_errors[0], "jtest_bad_inc.ini"));
+    assert_non_null(strstr(cfg->config_errors[0], "Parse error"));
+
+    free(cfg);
+    DeleteFileW(root_path);
+    DeleteFileW(bad_path);
+    DeleteFileW(good_path);
+}
+
 int run_config_tests(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_config_expand_passthrough),
@@ -723,6 +972,14 @@ int run_config_tests(void) {
         cmocka_unit_test_setup_teardown(test_config_load_circular_constant,
             config_load_setup, config_load_teardown),
         cmocka_unit_test_setup_teardown(test_config_load_open_shortcut,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_missing_include_continues,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_missing_include_partial,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_missing_include_no_cache,
+            config_load_setup, config_load_teardown),
+        cmocka_unit_test_setup_teardown(test_config_load_malformed_include_continues,
             config_load_setup, config_load_teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

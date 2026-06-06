@@ -78,10 +78,26 @@ static const char *icon_arg(ShortcutType type) {
     }
 }
 
+/* Build a human-readable string listing config errors (missing/invalid files).
+ * Writes to buf (up to buf_size). Returns the number of chars written. */
+static int format_config_errors(const JumpConfig *cfg, char *buf, size_t buf_size) {
+    int pos = 0;
+    int i;
+    if (cfg->config_error_count == 0) return 0;
+    for (i = 0; i < cfg->config_error_count; i++) {
+        pos += snprintf(buf + pos, buf_size - pos,
+                        "%s%s",
+                        (i > 0) ? "\n" : "",
+                        cfg->config_errors[i]);
+        if ((size_t)pos >= buf_size) break;
+    }
+    return pos;
+}
+
 /* Launch j.exe in a separate process to show OSD notification */
-static void spawn_osd(const char *text, ShortcutType type) {
+static void spawn_osd(const char *text, ShortcutType type, const char *error) {
     char exe_path[MAX_PATH];
-    char cmd_line[MAX_PATH + MAX_LABEL_LEN + 64];
+    char cmd_line[MAX_PATH + MAX_LABEL_LEN + MAX_PATH_LEN + 128];
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
 
@@ -96,8 +112,14 @@ static void spawn_osd(const char *text, ShortcutType type) {
         }
     }
 
-    sprintf_s(cmd_line, sizeof(cmd_line), "\"%s\" --osd \"%s\" %s",
-              exe_path, text, icon_arg(type));
+    if (error && error[0]) {
+        sprintf_s(cmd_line, sizeof(cmd_line),
+                  "\"%s\" --osd \"%s\" %s --error \"%s\"",
+                  exe_path, text, icon_arg(type), error);
+    } else {
+        sprintf_s(cmd_line, sizeof(cmd_line), "\"%s\" --osd \"%s\" %s",
+                  exe_path, text, icon_arg(type));
+    }
 
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
@@ -446,12 +468,21 @@ int jump_main(int argc, char *argv[]) {
         log_write("JMP04", "OSD mode requested");
         if (argc >= 3) {
             OsdIcon icon = OSD_ICON_CD;
+            const char *error_text = NULL;
+            int a;
             if (argc >= 4) {
                 if (_stricmp(argv[3], "open") == 0) icon = OSD_ICON_OPEN;
                 else if (_stricmp(argv[3], "exec") == 0) icon = OSD_ICON_EXEC;
             }
-            log_write("JMP05", "Showing OSD: text='%s'", argv[2]);
-            osd_show(argv[2], icon);
+            for (a = 3; a < argc; a++) {
+                if (_stricmp(argv[a], "--error") == 0 && a + 1 < argc) {
+                    error_text = argv[a + 1];
+                    break;
+                }
+            }
+            log_write("JMP05", "Showing OSD: text='%s' error='%s'",
+                      argv[2], error_text ? error_text : "");
+            osd_show(argv[2], icon, error_text);
         }
         exit_code = J_EXIT_OK;
         goto done;
@@ -643,6 +674,12 @@ int jump_main(int argc, char *argv[]) {
                                         "  %s\n", suggestions[s].alias);
                 }
             }
+            if (cfg->config_error_count > 0) {
+                char err_buf[MAX_PATH_LEN];
+                format_config_errors(cfg, err_buf, sizeof(err_buf));
+                pos += snprintf(error_buf + pos, sizeof(error_buf) - pos,
+                                "\n%s\n", err_buf);
+            }
             error_report("%s", error_buf);
             write_temp_cmd("@rem\n");
             free(cfg);
@@ -653,7 +690,14 @@ int jump_main(int argc, char *argv[]) {
         log_write("JMP26", "Performing action for label='%s'", result.label);
         {
             HANDLE exec_proc = perform_action(&result);
-            spawn_osd(result.label, result.type);
+            char err_buf[MAX_PATH_LEN];
+            const char *osd_error = NULL;
+            if (cfg->config_error_count > 0) {
+                format_config_errors(cfg, err_buf, sizeof(err_buf));
+                osd_error = err_buf;
+                fprintf(stderr, "%s\n", err_buf);
+            }
+            spawn_osd(result.label, result.type, osd_error);
             if (exec_proc) {
                 log_write("JMP27", "Waiting for EXEC child process");
                 WaitForSingleObject(exec_proc, INFINITE);
@@ -674,7 +718,7 @@ done:
             WideCharToMultiByte(CP_ACP, 0, log_path, -1,
                                 log_path_a, MAX_PATH, NULL, NULL);
             fprintf(stderr, "Log written to: %s\n", log_path_a);
-            spawn_osd(log_path_a, SHORTCUT_CD);
+            spawn_osd(log_path_a, SHORTCUT_CD, NULL);
 
             /* Copy log file path to clipboard */
             if (OpenClipboard(NULL)) {

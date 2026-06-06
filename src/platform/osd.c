@@ -6,6 +6,7 @@
 #include "osd.h"
 
 static const char *s_osd_text;
+static const char *s_osd_error;
 static OsdIcon s_osd_icon;
 
 static const wchar_t *icon_char(OsdIcon icon)
@@ -36,6 +37,15 @@ static HFONT create_icon_font(HDC hdc)
                        DEFAULT_PITCH | FF_DONTCARE, L"Segoe MDL2 Assets");
 }
 
+static HFONT create_error_font(HDC hdc)
+{
+    int h = -MulDiv(14, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+    return CreateFontA(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE,
+                       FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                       CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                       DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+}
+
 static LRESULT CALLBACK osd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
@@ -62,6 +72,21 @@ static LRESULT CALLBACK osd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         int pad = 40;
         int gap = 12;
 
+        /* Compute vertical layout */
+        int main_top = 0;
+        int main_bottom = rc.bottom;
+        if (s_osd_error && s_osd_error[0]) {
+            /* Split area: main text in upper portion, error in lower */
+            HFONT err_font = create_error_font(hdc);
+            HFONT old_f = (HFONT)SelectObject(hdc, err_font);
+            SIZE err_sz;
+            GetTextExtentPoint32A(hdc, s_osd_error,
+                                 (int)strlen(s_osd_error), &err_sz);
+            SelectObject(hdc, old_f);
+            DeleteObject(err_font);
+            main_bottom = rc.bottom - err_sz.cy - 4;
+        }
+
         /* Draw icon */
         const wchar_t *icon = icon_char(s_osd_icon);
         HFONT icon_font = create_icon_font(hdc);
@@ -73,6 +98,8 @@ static LRESULT CALLBACK osd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         RECT icon_rc = rc;
         icon_rc.left = pad;
         icon_rc.right = pad + icon_sz.cx;
+        icon_rc.top = main_top;
+        icon_rc.bottom = main_bottom;
         DrawTextW(hdc, icon, -1, &icon_rc,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
@@ -86,11 +113,31 @@ static LRESULT CALLBACK osd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         RECT text_rc = rc;
         text_rc.left = pad + icon_sz.cx + gap;
         text_rc.right = rc.right - pad;
+        text_rc.top = main_top;
+        text_rc.bottom = main_bottom;
         DrawTextA(hdc, s_osd_text, -1, &text_rc,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         SelectObject(hdc, old);
         DeleteObject(text_font);
+
+        /* Draw error text if present */
+        if (s_osd_error && s_osd_error[0]) {
+            HFONT err_font = create_error_font(hdc);
+            old = (HFONT)SelectObject(hdc, err_font);
+            SetTextColor(hdc, RGB(255, 80, 80));
+
+            RECT err_rc = rc;
+            err_rc.left = pad + icon_sz.cx + gap;
+            err_rc.right = rc.right - pad;
+            err_rc.top = main_bottom;
+            err_rc.bottom = rc.bottom;
+            DrawTextA(hdc, s_osd_error, -1, &err_rc,
+                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            SelectObject(hdc, old);
+            DeleteObject(err_font);
+        }
 
         EndPaint(hwnd, &ps);
         return 0;
@@ -102,10 +149,11 @@ static LRESULT CALLBACK osd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
 
-int osd_show(const char *text, OsdIcon icon)
+int osd_show(const char *text, OsdIcon icon, const char *error)
 {
     s_osd_text = text;
     s_osd_icon = icon;
+    s_osd_error = error;
 
     WNDCLASSA wc = {0};
     wc.lpfnWndProc   = osd_wndproc;
@@ -134,12 +182,25 @@ int osd_show(const char *text, OsdIcon icon)
     GetTextExtentPoint32A(dc, text, (int)strlen(text), &text_sz);
     SelectObject(dc, old);
     DeleteObject(text_font);
+
+    /* measure error text */
+    SIZE err_sz = {0, 0};
+    if (error && error[0]) {
+        HFONT err_font = create_error_font(dc);
+        old = (HFONT)SelectObject(dc, err_font);
+        GetTextExtentPoint32A(dc, error, (int)strlen(error), &err_sz);
+        SelectObject(dc, old);
+        DeleteObject(err_font);
+    }
     DeleteDC(dc);
 
     int pad = 40;
     int gap = 12;
-    int win_w = pad + icon_sz.cx + gap + text_sz.cx + pad;
+    int content_w = text_sz.cx;
+    if (err_sz.cx > content_w) content_w = err_sz.cx;
+    int win_w = pad + icon_sz.cx + gap + content_w + pad;
     int win_h = text_sz.cy + pad;
+    if (err_sz.cy > 0) win_h += err_sz.cy + 4;
     int x = (scr_w - win_w) / 2;
     int y = (int)(scr_h * 0.8);
 
