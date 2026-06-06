@@ -9,6 +9,7 @@
 #include "jump.h"
 #include "types.h"
 #include "config.h"
+#include "cache.h"
 #include "resolver.h"
 #include "suggest.h"
 #include "osd.h"
@@ -37,6 +38,7 @@ static void print_usage(void) {
         "  jc --list                    List all defined aliases\n"
         "  jc --version                 Show version information\n"
         "  jc --update                  Check for updates and install\n"
+        "  jc --reload                  Force reload configuration\n"
         "  jc --log                     Enable logging for the next command\n"
         "  j  --osd \"text\"              Show OSD overlay (internal)\n"
         "\n"
@@ -492,6 +494,38 @@ int jump_main(int argc, char *argv[]) {
         log_write("JMP16", "Update mode requested");
         exit_code = jump_update();
         log_write("JMP17", "jump_update returned %d", exit_code);
+        goto done;
+    }
+
+    /* --reload mode: delete cache and re-parse INI files */
+    if (_stricmp(argv[1], "--reload") == 0) {
+        wchar_t cache_path[MAX_PATH];
+        JumpConfig *cfg;
+        int rc;
+        log_write("JMP50", "Reload mode requested");
+        if (cache_get_default_path(cache_path, MAX_PATH) == 0) {
+            DeleteFileW(cache_path);
+            log_write("JMP51", "Deleted cache file");
+        }
+        cfg = (JumpConfig *)calloc(1, sizeof(JumpConfig));
+        if (!cfg) {
+            log_write("JMP52", "Failed to allocate JumpConfig for --reload");
+            exit_code = J_EXIT_RUNTIME_ERROR;
+            goto done;
+        }
+        rc = config_load(cfg);
+        if (rc != 0) {
+            log_write("JMP53", "config_load failed with %d in --reload mode", rc);
+            free(cfg);
+            exit_code = rc;
+            goto done;
+        }
+        fprintf(stderr, "Configuration reloaded: %d shortcut(s), %d constant(s).\n",
+                cfg->shortcut_count, cfg->constant_count);
+        log_write("JMP54", "Reload complete: %d shortcuts, %d constants",
+                  cfg->shortcut_count, cfg->constant_count);
+        free(cfg);
+        exit_code = J_EXIT_OK;
         goto done;
     }
 
