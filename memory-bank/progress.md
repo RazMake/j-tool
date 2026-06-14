@@ -26,6 +26,7 @@
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-06-13 | Fixed CI versioning in `ci.yml`: both the `Set release version` and `Extract version` steps now parse `MAJOR.MINOR` from `CMakeLists.txt` and append `github.run_number` as the patch, instead of hard-coding `1.0.`. Root cause of a `1.1.0` bump being released as `1.0.31`. |
 | 2026-05-21 | Added `--log` diagnostic logging: one-shot flag file + `%TEMP%\jump.log` with tagged IDs (JMP/CFG/CAC/RES/TC_) |
 | 2026-05-11 | Memory bank created |
 | 2026-05-11 | Added multi-word alias support (greedy longest-match in jump_main) |

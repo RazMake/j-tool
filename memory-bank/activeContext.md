@@ -7,6 +7,7 @@
 - Coverage gate set at 85%
 
 ## Recent Changes
+- CI version fix (2026-06-13) — `ci.yml` no longer hard-codes `1.0.` as the major.minor; both version steps now parse `MAJOR.MINOR` from `CMakeLists.txt` and append `github.run_number` as the patch. Previously a `1.1.0` bump shipped as `1.0.31`.
 - Diagnostic logging (2026-05-21) — `--log` flag enables one-shot logging to `%TEMP%\jump.log` for debugging
 - Memory bank created (2026-05-11) — comprehensive project documentation
 - Multi-word alias support (2026-05-11) — `jump_main()` tries longest multi-word alias first, falls back to single word

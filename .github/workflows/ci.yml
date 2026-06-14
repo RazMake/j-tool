@@ -37,8 +37,12 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         shell: pwsh
         run: |
-          $version = "1.0.${{ github.run_number }}"
-          (Get-Content CMakeLists.txt -Raw) -replace 'project\s*\(\s*Jump\s+VERSION\s+[\d.]+', "project(Jump VERSION $version" | Set-Content CMakeLists.txt -NoNewline
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\s*\(\s*Jump\s+VERSION\s+(\d+)\.(\d+)\.') {
+            Write-Error "Could not parse major.minor version from CMakeLists.txt"; exit 1
+          }
+          $version = "$($Matches[1]).$($Matches[2]).${{ github.run_number }}"
+          $cmake -replace 'project\s*\(\s*Jump\s+VERSION\s+[\d.]+', "project(Jump VERSION $version" | Set-Content CMakeLists.txt -NoNewline
 
       - name: Build Release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -75,7 +79,11 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "1.0.${{ github.run_number }}"
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\s*\(\s*Jump\s+VERSION\s+(\d+)\.(\d+)\.') {
+            Write-Error "Could not parse major.minor version from CMakeLists.txt"; exit 1
+          }
+          $version = "$($Matches[1]).$($Matches[2]).${{ github.run_number }}"
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Create zip

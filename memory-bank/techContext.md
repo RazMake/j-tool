@@ -112,3 +112,19 @@ If you prefer manual setup instead of `setup_dev.ps1`:
 - No runtime dependencies (statically linked)
 - Build-time: CMake, MSVC (Visual Studio Build Tools 2022), cmocka
 - Coverage: OpenCppCoverage (optional)
+
+## CI / Release Versioning (IMPORTANT)
+
+The **single source of truth for the version is `CMakeLists.txt`** (`project(Jump VERSION X.Y.Z ...)`). All CI must respect the `major.minor` written there.
+
+### How versions are produced
+| Workflow | Trigger | Version source |
+|----------|---------|----------------|
+| `.github/workflows/ci.yml` | push to `main` | `MAJOR.MINOR` parsed from `CMakeLists.txt` + `.${{ github.run_number }}` as patch |
+| `.github/workflows/release.yml` | push tag `v*` | Version taken verbatim from the git tag |
+
+### Rules to prevent version regressions
+- **Never hard-code `MAJOR.MINOR` in `ci.yml`.** Both the `Set release version` step (build-and-test job) and the `Extract version` step (release job) must parse `major.minor` from `CMakeLists.txt`. Hard-coding `1.0.` is what caused the 2026-06-13 incident where a `1.1.0` bump shipped as `1.0.31`.
+- When bumping the **minor/major**, edit `project(Jump VERSION X.Y.Z ...)` in `CMakeLists.txt` (or use `release.ps1 -Version`). The `ci.yml` auto-release will then pick up the new `major.minor` automatically.
+- The CI patch component is the GitHub Actions `run_number`, so on-`main` builds look like `X.Y.<run_number>` — this is expected and does not need a manual bump.
+- If both steps in `ci.yml` fail to parse the version, they error out (`exit 1`) instead of silently shipping a wrong version.
