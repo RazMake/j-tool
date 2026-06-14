@@ -50,6 +50,16 @@ static int get_ps_profile_path(const char *subfolder,
     return 0;
 }
 
+/* Build the Git Bash startup file path (~/.bashrc) from %USERPROFILE%. */
+static int get_bashrc_path(char *buf, size_t buf_size) {
+    char home[MAX_PATH];
+    DWORD n = GetEnvironmentVariableA("USERPROFILE", home, sizeof(home));
+    if (n == 0 || n >= sizeof(home)) return -1;
+    int r = snprintf(buf, buf_size, "%s\\.bashrc", home);
+    if (r < 0 || (size_t)r >= buf_size) return -1;
+    return 0;
+}
+
 /* Case-insensitive substring search. */
 static const char *stristr(const char *haystack, const char *needle) {
     if (!haystack || !needle) return NULL;
@@ -197,7 +207,8 @@ static int setup_autorun(void) {
 
 /* ---------- Step 4: PowerShell profile --------------------------------- */
 
-static int write_ps_profile(const char *profile_path, const char *block) {
+static int write_profile_block(const char *profile_path, const char *block,
+                               const char *label) {
     /* Read existing profile if any */
     char *content = NULL;
     DWORD content_len = 0;
@@ -278,7 +289,7 @@ static int write_ps_profile(const char *profile_path, const char *block) {
     CloseHandle(hf);
     free(new_content);
 
-    fprintf(stderr, "[install] PowerShell profile updated: %s\n", profile_path);
+    fprintf(stderr, "[install] %s updated: %s\n", label, profile_path);
     return 0;
 }
 
@@ -308,7 +319,7 @@ static int setup_ps_profile(const char *tc_path, const char *panel) {
         char profile_path[MAX_PATH];
         if (get_ps_profile_path("WindowsPowerShell", profile_path,
                                 sizeof(profile_path)) == 0) {
-            errors += write_ps_profile(profile_path, block);
+            errors += write_profile_block(profile_path, block, "PowerShell profile");
         }
     }
 
@@ -317,11 +328,40 @@ static int setup_ps_profile(const char *tc_path, const char *panel) {
         char profile_path[MAX_PATH];
         if (get_ps_profile_path("PowerShell", profile_path,
                                 sizeof(profile_path)) == 0) {
-            errors += write_ps_profile(profile_path, block);
+            errors += write_profile_block(profile_path, block, "PowerShell profile");
         }
     }
 
     return errors ? 1 : 0;
+}
+
+/* ---------- Step 4b: Git Bash profile ---------------------------------- */
+
+static int setup_bash_profile(void) {
+    char bashrc_path[MAX_PATH];
+    if (get_bashrc_path(bashrc_path, sizeof(bashrc_path)) != 0) {
+        fprintf(stderr, "[install] Could not determine Git Bash profile path.\n");
+        return 1;
+    }
+
+    /* Bash `j` function: capture the CD path jc.exe prints on stdout and
+     * change directory. cygpath converts the Windows path (C:\foo) into a
+     * POSIX path (/c/foo) that bash's cd understands. Written with LF line
+     * endings so Git Bash does not choke on CR characters. */
+    char block[1024];
+    snprintf(block, sizeof(block),
+             "%s\n"
+             "j() {\n"
+             "    local __jump_target\n"
+             "    __jump_target=\"$(jc.exe \"$@\")\"\n"
+             "    if [ -n \"$__jump_target\" ]; then\n"
+             "        cd \"$(cygpath -u \"$__jump_target\" 2>/dev/null || printf '%%s' \"$__jump_target\")\"\n"
+             "    fi\n"
+             "}\n"
+             "%s\n",
+             PS_MARKER_BEGIN, PS_MARKER_END);
+
+    return write_profile_block(bashrc_path, block, "Git Bash profile");
 }
 
 /* ---------- Step 5: PATH ----------------------------------------------- */
@@ -491,7 +531,7 @@ static int remove_autorun(void) {
     return 0;
 }
 
-static int remove_ps_profile_at(const char *profile_path) {
+static int remove_profile_block_at(const char *profile_path, const char *label) {
     HANDLE hf = CreateFileA(profile_path, GENERIC_READ, FILE_SHARE_READ,
                             NULL, OPEN_EXISTING, 0, NULL);
     if (hf == INVALID_HANDLE_VALUE) return 0; /* file doesn't exist */
@@ -542,8 +582,15 @@ static int remove_ps_profile_at(const char *profile_path) {
     CloseHandle(hf);
     free(new_content);
 
-    fprintf(stderr, "[uninstall] PowerShell profile cleaned.\n");
+    fprintf(stderr, "[uninstall] %s cleaned.\n", label);
     return 0;
+}
+
+/* Remove the Jump function block from the Git Bash startup file. */
+static int remove_bash_profile(void) {
+    char bashrc_path[MAX_PATH];
+    if (get_bashrc_path(bashrc_path, sizeof(bashrc_path)) != 0) return 0;
+    return remove_profile_block_at(bashrc_path, "Git Bash profile");
 }
 
 /* ======================================================================= */
@@ -581,6 +628,9 @@ int jump_install(const char *tc_panel) {
     /* Step 4: PowerShell profile */
     errors += setup_ps_profile(tc_found ? tc_path : NULL, panel);
 
+    /* Step 4b: Git Bash profile (~/.bashrc) */
+    errors += setup_bash_profile();
+
     /* Step 5: Add to PATH */
     if (exe_dir[0]) {
         errors += add_to_path(exe_dir);
@@ -607,13 +657,16 @@ int jump_uninstall(void) {
         char profile_path[MAX_PATH];
         if (get_ps_profile_path("WindowsPowerShell", profile_path,
                                 sizeof(profile_path)) == 0) {
-            errors += remove_ps_profile_at(profile_path);
+            errors += remove_profile_block_at(profile_path, "PowerShell profile");
         }
         if (get_ps_profile_path("PowerShell", profile_path,
                                 sizeof(profile_path)) == 0) {
-            errors += remove_ps_profile_at(profile_path);
+            errors += remove_profile_block_at(profile_path, "PowerShell profile");
         }
     }
+
+    /* Step 2c: Remove Git Bash profile block */
+    errors += remove_bash_profile();
 
     /* Step 2b: Remove wrapper batch file */
     char exe_dir[MAX_PATH];

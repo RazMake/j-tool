@@ -1,5 +1,5 @@
-/* Shell integration installer — registers the `j` command in CMD
- * and PowerShell, adds the exe to PATH, and handles uninstallation. */
+/* Shell integration installer — registers the `j` command in CMD,
+ * PowerShell and Git Bash, adds the exe to PATH, and handles uninstallation. */
 #ifndef INSTALL_H
 #define INSTALL_H
 
@@ -9,6 +9,7 @@
  *   2. Detect Total Commander from HKLM registry.
  *   3. Create DOSKEY macro in HKCU\...\Command Processor\AutoRun.
  *   4. Append PowerShell function to $PROFILE (with BEGIN/END JUMP markers).
+ *   4b. Append Git Bash function to ~/.bashrc (with BEGIN/END JUMP markers).
  *   5. Add j.exe directory to HKCU\Environment\Path.
  *   6. Broadcast WM_SETTINGCHANGE.
  *
@@ -25,6 +26,7 @@ int jump_install(const char *tc_panel);
  *   1. Remove directory from HKCU\Environment\Path.
  *   2. Remove DOSKEY macro from AutoRun.
  *   3. Remove PowerShell function from $PROFILE (by markers).
+ *   3b. Remove Git Bash function from ~/.bashrc (by markers).
  *   4. Broadcast WM_SETTINGCHANGE.
  *
  * Returns 0 on success, non-zero on failure.

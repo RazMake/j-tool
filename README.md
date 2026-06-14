@@ -13,7 +13,7 @@ Possible actions are:
 - **Binary caching** — Configs are compiled to a binary cache and only re-parsed when source files change.
 - **OSD overlay** — A brief, transparent on-screen popup confirms which shortcut was activated.
 - **Fuzzy suggestions** — Mistype an alias and Jump suggests the closest matches (_Levenshtein distance_).
-- **Shell integration** — Automatic setup for CMD (DOSKEY macro), PowerShell (`$PROFILE` function), and _**Total Commander**_ panel switching.
+- **Shell integration** — Automatic setup for CMD (DOSKEY macro), PowerShell (`$PROFILE` function), Git Bash (`~/.bashrc` function), and _**Total Commander**_ panel switching.
 - **Portable** — Statically linked, no runtime dependencies.
 
 ## Usage

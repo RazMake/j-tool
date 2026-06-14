@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## v1.1
 
 ### Features
 
+- **Git Bash integration** — `jc --install` now sets up a `j` shell function in `~/.bashrc`, translating the printed Windows path to a POSIX path so `cd` works in Git Bash. `jc --uninstall` removes the function block.
 - **VBS script execution** — `Execute=` targets ending in `.vbs` are auto-launched through the Windows Script Host (`cscript.exe`, or `wscript.exe` when `HideConsole=true`).
 - **`HideConsole` flag** — EXEC shortcuts may set `HideConsole=true` to suppress the console window of the spawned process. Applies to `.exe`, `.cmd`/`.bat`, `.ps1`, and `.vbs` targets.
 

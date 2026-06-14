@@ -58,6 +58,23 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 8. Validate (no duplicate aliases/constants)
 9. Save to binary cache (`%TEMP%\jump.cache`)
 
+## Versioning & Changelog Discipline
+
+### Changelog is mandatory for every change
+- **Every** behavior-affecting change MUST be recorded in `CHANGELOG.md`, summarizing the change in behavior (what the user can now do or what changed), not the implementation detail.
+- While a change is unreleased, add it under the `## Unreleased` section (create it if missing) using a bullet of the form `- **Short title** — one-sentence summary of the behavior change.`
+- Group entries under a subsection like `### Features`, `### Fixes`, or `### Changes` as appropriate.
+
+### How to bump the version
+The single source of truth for the version is `CMakeLists.txt`. It flows into `src/core/version.h.in` → generated `version.h` at configure time, and `release.ps1` reads it back from `CMakeLists.txt`.
+
+To increase the version (e.g. to `1.1`):
+1. **`CMakeLists.txt`** — update `project(Jump VERSION X.Y.Z LANGUAGES C)`. (Note: `release.ps1 -Version X.Y.Z` can also write this for you.)
+2. **`CHANGELOG.md`** — rename the `## Unreleased` heading to `## vX.Y` (or add a new released section) so the accumulated entries become the release notes. Keep older release sections below it.
+3. **`memory-bank/projectbrief.md`** — update the `## Current Version` line.
+4. Do **not** hand-edit the generated `build/generated/version.h`; it is regenerated from `version.h.in` on the next configure.
+
+
 ## Template Expansion
 - `{{CONSTANT}}` → looked up from merged constants (case-insensitive)
 - `{{ENV:VARNAME}}` → looked up from environment variables
