@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2
+
+### Changes
+
+- **Clearer feedback when shell integration is missing** — Running `j <cd-alias>` from a terminal where the `j` shell function/DOSKEY macro is not loaded now prints a message explaining that the working directory was not changed (with the target path and a fix hint) instead of silently popping a new `cmd.exe` window. The Win+R Run dialog still opens a new window as before.
+
 ## v1.1
 
 ### Features

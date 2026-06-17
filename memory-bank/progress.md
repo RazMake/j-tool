@@ -26,6 +26,7 @@
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-06-17 | `j.exe` CD fallback now distinguishes a real terminal from the Win+R Run dialog using `AttachConsole(ATTACH_PARENT_PROCESS)`. When launched from a terminal without the `j` function/DOSKEY macro loaded (parent owns a console), it attaches to that console and prints a "shell integration not active" message (target path + fix hint) instead of popping a new `cmd.exe`. Run dialog/Explorer (no parent console) keeps the new-cmd-window behavior. TC, OPEN, EXEC, and `jc.exe` paths unaffected. |
 | 2026-06-17 | `setup_dev.ps1` now verifies MSVC C++ headers via `Test-MsvcHeaders` (mirrors `build_env.ps1`) instead of only checking for `vswhere.exe`. When headers are missing it installs the `visualstudio2022-workload-vctools` Chocolatey package (covers both no-Build-Tools and Build-Tools-without-C++-workload cases), with a manual-install fallback message. Fixes setup failing with "No Visual Studio installation with MSVC C++ headers found." |
 | 2026-06-13 | Fixed CI versioning in `ci.yml`: both the `Set release version` and `Extract version` steps now parse `MAJOR.MINOR` from `CMakeLists.txt` and append `github.run_number` as the patch, instead of hard-coding `1.0.`. Root cause of a `1.1.0` bump being released as `1.0.31`. |
 | 2026-05-21 | Added `--log` diagnostic logging: one-shot flag file + `%TEMP%\jump.log` with tagged IDs (JMP/CFG/CAC/RES/TC_) |

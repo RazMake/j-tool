@@ -360,10 +360,42 @@ static HANDLE perform_action(const ResolveResult *result) {
             tc_navigate(result->expanded_target);
         }
 
-        /* If no console is attached and we're not inside Total Commander
-         * (e.g. launched from Win+R Run dialog), open a new cmd window
-         * at the target directory. */
+        /* If no console is attached and we're not inside Total Commander,
+         * j.exe was launched without active shell integration. Two cases:
+         *   1. From a real terminal (PowerShell/cmd) where the `j` shell
+         *      function/macro is NOT loaded — the parent process owns a
+         *      console. A child process cannot change the parent shell's
+         *      directory, so attach to that console and explain it.
+         *   2. From the Win+R Run dialog / Explorer — there is no parent
+         *      console, so open a new cmd window at the target directory. */
         if (!GetConsoleWindow() && !tc_is_ancestor()) {
+            if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+                HANDLE hOut = CreateFileA("CONOUT$", GENERIC_WRITE,
+                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                          NULL, OPEN_EXISTING, 0, NULL);
+                log_write("JMP31c",
+                          "Parent console detected, shell integration inactive");
+                if (hOut != INVALID_HANDLE_VALUE) {
+                    char msg[MAX_PATH_LEN + 512];
+                    int len = sprintf_s(msg, sizeof(msg),
+                        "\r\n"
+                        "j: shell integration is not active in this session, so the\r\n"
+                        "   working directory was not changed.\r\n"
+                        "   Target: %s\r\n"
+                        "   Fix: run 'jc --install' and start a new shell, or make sure\r\n"
+                        "        your profile defines the 'j' function (PowerShell) or\r\n"
+                        "        DOSKEY macro (cmd).\r\n",
+                        result->expanded_target);
+                    if (len > 0) {
+                        DWORD written;
+                        WriteFile(hOut, msg, (DWORD)len, &written, NULL);
+                    }
+                    CloseHandle(hOut);
+                }
+                FreeConsole();
+                break;
+            }
+
             STARTUPINFOA si_cd;
             PROCESS_INFORMATION pi_cd;
             char cmd_run[MAX_PATH_LEN + 32];
