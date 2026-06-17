@@ -9,6 +9,23 @@
 
 $ErrorActionPreference = "Stop"
 
+# Returns $true only if an installation with MSVC C++ headers is present.
+# Mirrors the detection logic in build_env.ps1 so we install the C++ workload
+# when the VS Installer exists but the MSVC headers are missing.
+function Test-MsvcHeaders {
+    param([string]$VswherePath)
+    if (-not (Test-Path $VswherePath)) { return $false }
+    $roots = & $VswherePath -all -products * -property installationPath 2>$null
+    foreach ($root in $roots) {
+        $base = "$root\VC\Tools\MSVC"
+        if (-not (Test-Path $base)) { continue }
+        $ver = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+        if ($ver -and (Test-Path "$base\$ver\include")) { return $true }
+    }
+    return $false
+}
+
 Write-Host "============================================================"
 Write-Host " Jump — Developer Environment Setup"
 Write-Host "============================================================"
@@ -49,15 +66,34 @@ if (-not (Get-Command OpenCppCoverage -ErrorAction SilentlyContinue) -and -not (
     Write-Host "  OpenCppCoverage: OK"
 }
 
-# Visual Studio Build Tools
+# Visual Studio Build Tools + MSVC C++ workload
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path $vswhere)) {
-    Write-Host "  Installing Visual Studio Build Tools 2022..."
-    choco install visualstudio2022buildtools -y --no-progress `
-        --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+if (-not (Test-MsvcHeaders $vswhere)) {
+    if (Test-Path $vswhere) {
+        Write-Host "  Visual Studio is installed but the MSVC C++ headers are missing — adding the C++ build tools workload..."
+    } else {
+        Write-Host "  Installing Visual Studio Build Tools 2022 with the C++ workload..."
+    }
+    # The workload package depends on visualstudio2022buildtools, so it installs
+    # the Build Tools when absent and adds the VCTools workload when only the
+    # installer/shell is present.
+    choco install visualstudio2022-workload-vctools -y --no-progress `
+        --package-parameters "--includeRecommended"
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+    if (-not (Test-MsvcHeaders $vswhere)) {
+        Write-Error @"
+The MSVC C++ build tools workload could not be installed automatically.
+Install it manually via the Visual Studio Installer:
+  - Open 'Visual Studio Installer'
+  - Modify your Build Tools / Visual Studio installation
+  - Enable 'Desktop development with C++' (VCTools workload)
+Then re-run .\setup_dev.ps1
+"@
+        exit 1
+    }
 }
-Write-Host "  Visual Studio Build Tools: OK"
+Write-Host "  Visual Studio Build Tools (MSVC C++): OK"
 Write-Host ""
 
 # ============================================================

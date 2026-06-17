@@ -7,6 +7,7 @@
 - Coverage gate set at 85%
 
 ## Recent Changes
+- setup_dev.ps1 MSVC workload fix (2026-06-17) — the VS step now verifies MSVC C++ headers (via `Test-MsvcHeaders`, mirroring `build_env.ps1`) instead of only checking for `vswhere.exe`. When headers are missing it installs the `visualstudio2022-workload-vctools` package, so a Build Tools install lacking the C++ workload is repaired automatically instead of failing later with "No Visual Studio installation with MSVC C++ headers found."
 - CI version fix (2026-06-13) — `ci.yml` no longer hard-codes `1.0.` as the major.minor; both version steps now parse `MAJOR.MINOR` from `CMakeLists.txt` and append `github.run_number` as the patch. Previously a `1.1.0` bump shipped as `1.0.31`.
 - Diagnostic logging (2026-05-21) — `--log` flag enables one-shot logging to `%TEMP%\jump.log` for debugging
 - Memory bank created (2026-05-11) — comprehensive project documentation
@@ -17,7 +18,7 @@
 - Win+R Run dialog CD support (2026-05-27) — when no console is attached, CD shortcuts open a new cmd.exe window at the target path
 
 ## Current Focus
-- Win+R Run dialog support for CD shortcuts (open cmd.exe at target path when no console attached)
+- Hardening `setup_dev.ps1` so a bare/partial Windows machine reaches a working build (auto-install MSVC C++ workload when missing)
 
 ## Known Limitations
 | Limitation | Notes |
