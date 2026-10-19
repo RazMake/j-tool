@@ -21,7 +21,23 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Install OpenCppCoverage
-        run: choco install opencppcoverage -y
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'OpenCppCoverageSetup-x64-0.9.9.0.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'OpenCppCoverage'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/OpenCppCoverage/OpenCppCoverage/releases/download/release-0.9.9.0/OpenCppCoverageSetup-x64-0.9.9.0.exe' `
+            -OutFile $installer -MaximumRetryCount 3 -RetryIntervalSec 5
+          $process = Start-Process -FilePath $installer `
+            -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$installDir`"") `
+            -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "OpenCppCoverage installer failed with exit code $($process.ExitCode)."
+          }
+          if (-not (Test-Path (Join-Path $installDir 'OpenCppCoverage.exe') -PathType Leaf)) {
+            throw "OpenCppCoverage installation did not produce OpenCppCoverage.exe in $installDir."
+          }
+          $installDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Coverage
         run: .\check_coverage.ps1

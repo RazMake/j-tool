@@ -100,6 +100,7 @@ If you prefer manual setup instead of `setup_dev.ps1`:
 
 ## Coverage Configuration
 - **Gate threshold**: 85%
+- **CI installation**: `.github/workflows/ci.yml` downloads the official OpenCppCoverage 0.9.9.0 x64 installer directly from its pinned GitHub release, with bounded download retries. It installs into the runner's temporary directory, checks the installer exit code and executable, and exports the directory via `GITHUB_PATH`. This avoids Chocolatey feed outages that can leave a successful-looking install step with no coverage tool.
 - **Excluded from coverage**: `osd.c`, `main.c`, `main_win.c`, `jump.c`, `install.c` (UI/orchestration code)
 - Tool: OpenCppCoverage
 
