@@ -1,9 +1,9 @@
 # Progress
 
 ## What Works
-- [x] INI parsing with section/key lookup, whitespace trimming, keyless entries, error handling
+- [x] INI parsing with up to 300 sections per file, section/key lookup, whitespace trimming, keyless entries, error handling
 - [x] Binary cache with save/load and mtime-based freshness validation
-- [x] Config loading with include processing, constant merging, encoding detection
+- [x] Config loading with up to 280 shortcuts, include processing, constant merging, encoding detection
 - [x] Template expansion (`{{CONSTANT}}` and `{{ENV:VAR}}`)
 - [x] Config validation (duplicate aliases and constants)
 - [x] Alias resolution with case-insensitive lookup and multi-word alias support
@@ -26,6 +26,7 @@
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-10-19 | Increased limits to 300 sections per INI file and 280 total shortcuts. Added boundary tests for 300/301 sections and 280/281 shortcuts, including cache roundtrips. Moved remaining stack-allocated test configs to the heap to accommodate the larger structure. Bumped version to 1.3.0 and recorded v1.3 release notes with user approval. |
 | 2026-06-17 | `j.exe` CD fallback now distinguishes a real terminal from the Win+R Run dialog using `AttachConsole(ATTACH_PARENT_PROCESS)`. When launched from a terminal without the `j` function/DOSKEY macro loaded (parent owns a console), it attaches to that console and prints a "shell integration not active" message (target path + fix hint) instead of popping a new `cmd.exe`. Run dialog/Explorer (no parent console) keeps the new-cmd-window behavior. TC, OPEN, EXEC, and `jc.exe` paths unaffected. |
 | 2026-06-17 | `setup_dev.ps1` now verifies MSVC C++ headers via `Test-MsvcHeaders` (mirrors `build_env.ps1`) instead of only checking for `vswhere.exe`. When headers are missing it installs the `visualstudio2022-workload-vctools` Chocolatey package (covers both no-Build-Tools and Build-Tools-without-C++-workload cases), with a manual-install fallback message. Fixes setup failing with "No Visual Studio installation with MSVC C++ headers found." |
 | 2026-06-13 | Fixed CI versioning in `ci.yml`: both the `Set release version` and `Extract version` steps now parse `MAJOR.MINOR` from `CMakeLists.txt` and append `github.run_number` as the patch, instead of hard-coding `1.0.`. Root cause of a `1.1.0` bump being released as `1.0.31`. |

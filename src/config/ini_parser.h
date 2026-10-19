@@ -6,7 +6,7 @@
 
 #include <stddef.h>
 
-#define INI_MAX_SECTIONS    64
+#define INI_MAX_SECTIONS    300
 #define INI_MAX_ENTRIES     32
 #define INI_MAX_KEY_LEN     64
 #define INI_MAX_VALUE_LEN   2048

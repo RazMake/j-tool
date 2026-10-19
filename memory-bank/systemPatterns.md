@@ -34,7 +34,7 @@ Entry Points: main.c (console) / main_win.c (Windows GUI)
 - `ShortcutType` — enum: `SHORTCUT_CD`, `SHORTCUT_OPEN`, `SHORTCUT_EXEC`
 - `Shortcut` — aliases[8] + label + target + type
 - `Constant` — name + value pair for template expansion
-- `JumpConfig` — up to 256 shortcuts + 64 constants
+- `JumpConfig` — up to 280 shortcuts + 64 constants
 
 ## Command Dispatch Order
 - `jump_main()` dispatches CLI flags in two phases:
@@ -92,10 +92,10 @@ To increase the version (e.g. to `1.1`):
 ## Limits
 | Constraint | Value |
 |-----------|-------|
-| Max shortcuts | 256 |
+| Max shortcuts | 280 |
 | Max constants | 64 |
 | Max aliases per shortcut | 20 |
-| Max sections (INI parser) | 64 |
+| Max sections (INI parser, per file) | 300 |
 | Max entries per section | 32 |
 | Max key length | 64 bytes |
 | Max value length | 2048 bytes |

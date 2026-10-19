@@ -157,6 +157,33 @@ static void test_ini_parse_unclosed_bracket(void **state) {
     free(f);
 }
 
+static void test_ini_parse_300_sections(void **state) {
+    (void)state;
+    char *text = calloc(1, 300 * 64 + 1);
+    assert_non_null(text);
+    for (int i = 0; i < 300; i++) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "[Section%d]\nkey=value%d\n", i, i);
+        strcat(text, buf);
+    }
+    IniFile *f = calloc(1, sizeof(IniFile));
+    assert_non_null(f);
+    assert_int_equal(0, ini_parse(text, strlen(text), f));
+    assert_int_equal(300, f->section_count);
+    assert_string_equal("", f->error_msg);
+    for (int i = 0; i < 300; i++) {
+        char name[32], value[32];
+        snprintf(name, sizeof(name), "Section%d", i);
+        snprintf(value, sizeof(value), "value%d", i);
+        const IniSection *section = ini_find_section(f, name);
+        assert_non_null(section);
+        assert_int_equal(1, section->entry_count);
+        assert_string_equal(value, ini_find_value(section, "key"));
+    }
+    free(f);
+    free(text);
+}
+
 /* 10. Overflow: too many sections → error */
 static void test_ini_parse_too_many_sections(void **state) {
     (void)state;
@@ -170,8 +197,10 @@ static void test_ini_parse_too_many_sections(void **state) {
     }
     IniFile *f = calloc(1, sizeof(IniFile));
     assert_non_null(f);
+    assert_int_equal(300, INI_MAX_SECTIONS);
     assert_int_not_equal(0, ini_parse(text, strlen(text), f));
-    assert_true(strlen(f->error_msg) > 0);
+    assert_int_equal(300, f->section_count);
+    assert_string_equal("Too many sections (max 300)", f->error_msg);
     free(f);
     free(text);
 }
@@ -365,6 +394,7 @@ int run_ini_parser_tests(void) {
         cmocka_unit_test(test_ini_find_section_case_insensitive),
         cmocka_unit_test(test_ini_find_value_case_insensitive),
         cmocka_unit_test(test_ini_parse_unclosed_bracket),
+        cmocka_unit_test(test_ini_parse_300_sections),
         cmocka_unit_test(test_ini_parse_too_many_sections),
         cmocka_unit_test(test_ini_parse_too_many_entries),
         cmocka_unit_test(test_ini_parse_content_before_section),

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3
+
+### Changes
+
+- **Larger configurations** — Each INI file can now contain up to 300 sections instead of 64, including `[Constants]` and `[Include]`, and the total configuration supports up to 280 shortcuts instead of 256.
+
 ## v1.2
 
 ### Changes

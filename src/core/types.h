@@ -9,7 +9,7 @@
 #define MAX_PATH_LEN             2048
 #define MAX_LABEL_LEN            128
 #define MAX_ALIASES_PER_SHORTCUT 20
-#define MAX_SHORTCUTS            256
+#define MAX_SHORTCUTS            280
 #define MAX_CONSTANTS            64
 #define MAX_SOURCE_FILES         32
 #define MAX_CONFIG_ERRORS        16

@@ -38,4 +38,4 @@ j  --osd "text"               Show OSD overlay (internal)
 Windows only (MSVC, Win32 APIs)
 
 ## Current Version
-v1.2
+v1.3

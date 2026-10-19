@@ -46,6 +46,9 @@ It is possible to split the config into a machine specific file and then general
 - Create one INI file for each machine (stored locally), which define the specific locations as constants.
 - Create files for the common jumps in a shared location (_i.e. in OneDrive_) and use the constants in those files.  
 
+Each INI file supports up to 300 sections, including `[Constants]` and `[Include]`.
+The total configuration supports up to 280 shortcuts across all files.
+
 Then on each machine the jumps (shortcuts) will work the same way, even if there are slight differences in the folder configuration.
 
 ```ini
